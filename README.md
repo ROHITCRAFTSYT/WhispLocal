@@ -1,111 +1,151 @@
-# WhispLocal 🎙️
+<p align="center">
+  <img src="docs/banner.png" alt="WhispLocal" width="820">
+</p>
 
-**Private, fully-offline voice dictation for Windows** — an open-source
-alternative to Wispr Flow that never sends your voice anywhere.
+<p align="center">
+  <a href="https://github.com/ROHITCRAFTSYT/WhispLocal/actions/workflows/ci.yml"><img src="https://github.com/ROHITCRAFTSYT/WhispLocal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
+  <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey" alt="Windows 10/11">
+</p>
 
-![CI](https://github.com/ROHITCRAFTSYT/WhispLocal/actions/workflows/ci.yml/badge.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
+WhispLocal is a dictation app for Windows that runs entirely on your own
+computer. Hold a key, say what you want to type, release, and the text
+appears at your cursor in whatever app you were using. There is no cloud
+service behind it: the speech recognition model runs on your CPU, so
+nothing you say ever leaves the machine.
 
-Hold a hotkey, speak, release — your words appear at the cursor in any
-app, cleaned up and punctuated. Cloud dictation tools upload every word
-you say; WhispLocal runs the entire pipeline on your own CPU:
+<p align="center">
+  <img src="docs/waveform.gif" alt="Recording indicator with live waveform" width="340">
+</p>
 
-```
-hotkey → mic capture (16 kHz) → faster-whisper (int8, CPU) → cleanup
-(fillers, custom dictionary, punctuation) → paste at cursor in any app
-```
+## How it works
 
-## Features
+<p align="center">
+  <img src="docs/architecture.svg" alt="Pipeline: hotkey, microphone, faster-whisper, cleanup, active window" width="820">
+</p>
 
-- 🎤 **Hold-to-talk or tap-to-lock** dictation into any application
-- 📊 **Live waveform pill** showing your real mic levels while you speak
-- 🌍 **Translate mode** — optional second hotkey: speak any language,
-  English comes out
-- 🧹 **AI-style cleanup** — filler-word removal (um, uh…), sentence
-  capitalization, custom dictionary (`heard => replacement`)
-- ⚡ **Six models** — from `tiny` (fastest) to `small` (most accurate),
-  switchable from the tray; `base` runs faster than real-time even on a
-  2-core i3
-- 🖥️ **Real app experience** — tray icon, Settings and History windows,
-  single-instance guard, silent launch (no console window ever)
-- 🔒 **Offline by design** — no telemetry, no accounts, no subscription
+Audio is captured at 16 kHz while you hold the hotkey, then transcribed
+by [faster-whisper](https://github.com/SYSTRAN/faster-whisper), a
+CTranslate2 port of OpenAI's Whisper quantized to int8 so it performs
+well on CPUs without a GPU. A cleanup pass strips filler words (um, uh),
+fixes capitalization, and applies your personal dictionary of
+corrections, for example `jason => JSON`. The result is pasted at the
+cursor, and your previous clipboard contents are restored afterwards.
+
+## What it does
+
+- Types into anything that accepts text: browsers, editors, chat apps, terminals.
+- Hold to talk, or tap the key once to lock recording on for longer dictation.
+- Shows a live waveform while recording, so you know it is listening.
+- An optional second hotkey transcribes speech in other languages directly to English text.
+- Six recognition models, switchable from the tray without restarting.
+- Runs from the system tray with no console window. Starting it twice will not launch a second copy.
+- Sound cues, a pause switch, and a dictation history you can search and copy from.
+
+Settings and history are regular windows, not config files you have to edit:
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/settings.png" alt="Settings window" width="420"></td>
+    <td align="center"><img src="docs/history.png" alt="History window" width="420"></td>
+  </tr>
+  <tr>
+    <td align="center">Settings</td>
+    <td align="center">History</td>
+  </tr>
+</table>
+
+## Performance
+
+<p align="center">
+  <img src="docs/benchmark.svg" alt="Benchmark: tiny 1.5s, base.en 1.9s, base 2.9s for a 14 second dictation" width="820">
+</p>
+
+These numbers come from a two-core laptop CPU (Intel i3-1005G1) with no
+GPU, so they are close to a worst case. On newer hardware the wait is
+shorter. The model stays loaded in RAM between dictations; only the
+first dictation after startup pays a loading cost of a couple of
+seconds.
 
 ## Install
 
 ```
 git clone https://github.com/ROHITCRAFTSYT/WhispLocal.git
 cd WhispLocal
-setup.bat              (creates venv, installs deps, downloads the model)
-install_shortcuts.bat  (adds WhispLocal to Desktop + Start Menu)
+setup.bat
+install_shortcuts.bat
 ```
 
-Requires Windows 10/11 and [Python 3.11+](https://www.python.org/downloads/).
-The one-time model download (~75 MB) is the only network access the app
-ever makes — after that it works with the network cable unplugged.
+You need Windows 10 or 11 and [Python 3.11+](https://www.python.org/downloads/).
+`setup.bat` creates a virtual environment, installs dependencies, and
+downloads the default model (about 75 MB). `install_shortcuts.bat` adds
+WhispLocal to your Desktop and Start Menu. After that, launch it from
+the Start Menu and look for the microphone icon in the tray.
 
-## Usage
+To start it automatically at login, press `Win+R`, type `shell:startup`,
+and copy the WhispLocal shortcut into that folder.
 
-Launch **WhispLocal** from the Start Menu — a mic icon appears in the tray.
+## Everyday use
 
 | Action | Result |
 |---|---|
-| Hold `Right Ctrl`, speak, release | Text typed at your cursor |
-| Quick-tap `Right Ctrl` | Recording locks on (🔒); tap again to stop |
-| Translate hotkey (set in Settings) | Any spoken language → English text |
-| Tray → Settings… | Model, language, mic, hotkeys, cleanup, dictionary |
-| Tray → History… | Browse past dictations, double-click to copy |
-| Tray → Model | Quick-switch model |
-| Tray → Pause dictation | Temporarily disable hotkeys |
+| Hold `Right Ctrl`, speak, release | Text is typed at your cursor |
+| Tap `Right Ctrl` once | Recording locks on; tap again to stop |
+| Translate hotkey (set one in Settings) | Speech in any language becomes English text |
+| Tray menu → Settings | Model, language, microphone, hotkeys, dictionary |
+| Tray menu → History | Past dictations, double-click to copy |
+| Tray menu → Pause dictation | Hotkeys ignored until you unpause |
 
-Auto-start at login: `Win+R` → `shell:startup` → copy the WhispLocal
-shortcut there.
+## Choosing a model
 
-## Model guide
-
-| Model | Speed on a 2-core CPU | Notes |
+| Model | 14 s dictation takes | Notes |
 |---|---|---|
-| `tiny` / `tiny.en` | fastest | lower accuracy |
-| `base` / `base.en` | faster than real-time | **recommended** |
-| `small` / `small.en` | ~2.5× slower | most accurate |
+| `tiny` / `tiny.en` | 1.5 s | Fastest, makes more mistakes |
+| `base` / `base.en` | 1.9 to 2.9 s | Default, good balance |
+| `small` / `small.en` | about 7 s (estimated) | Most accurate |
 
-`.en` variants are faster and more accurate for English only. Translate
-mode needs a multilingual model (no `.en` suffix). Switching to a model
-you haven't used yet downloads it once.
+The `.en` variants are faster and more accurate but only understand
+English. Translate mode needs a multilingual model (one without the
+`.en` suffix). Picking a model you have not used before downloads it
+once, which is the only situation where the app needs a network
+connection.
 
-## Privacy, honestly
+## Privacy
 
-- **Audio never leaves your machine.** Transcription runs locally; there
-  are no analytics, accounts, or update pings. The only network access is
-  downloading a model from Hugging Face when you first select it.
-- **History** is saved in plaintext in `history.jsonl` next to the app so
-  the History window can show it. Turn it off in Settings or delete the
-  file anytime.
-- **Clipboard**: the default insert method briefly places the dictated
-  text on the clipboard and then restores what was there. If you disable
-  "Restore clipboard", the dictated text remains on the clipboard; use
-  the `type` insert method to bypass the clipboard entirely.
-- The global hotkey uses a keyboard hook (that's how push-to-talk works
-  system-wide); keystrokes are never stored or transmitted.
+- Transcription happens on your CPU. The app has no telemetry, no
+  account system, and makes no network requests while running.
+- Models are downloaded from Hugging Face once, when you first select
+  them. Nothing is uploaded.
+- History is stored in plain text in `history.jsonl` next to the app,
+  so the History window can show it. Turn it off in Settings or delete
+  the file whenever you want.
+- The default insert method puts the dictated text on the clipboard
+  briefly and then restores what was there before. If you turn off
+  clipboard restore, the dictated text stays on the clipboard. The
+  `type` insert method avoids the clipboard entirely.
+- Push-to-talk anywhere in the OS requires a keyboard hook. The hook is
+  only used to watch for the hotkeys you configured; keystrokes are not
+  recorded or stored.
 
 ## Development
 
 ```
-venv\Scripts\python.exe -m unittest discover -s tests   # unit tests
-debug.bat                                               # run with console
+venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-Errors are logged to `whisp.log` (auto-rotated). Pull requests welcome.
+`debug.bat` runs the app with a console attached so you can watch for
+errors. At runtime, errors go to `whisp.log`, which rotates itself.
+Pull requests are welcome.
 
 ## Troubleshooting
 
-- **Nothing types in some apps** — apps running as Administrator ignore
-  input from normal processes; run WhispLocal as admin too.
-- **Paste blocked in an app** — switch Insert method to `type` in Settings.
-- **Wrong microphone** — pick it in Settings → Microphone.
-- **Won't start** — run `debug.bat` and read the error, or check `whisp.log`.
+- Text does not appear in some apps: programs running as Administrator
+  ignore input from normal processes. Run WhispLocal as administrator too.
+- An app blocks pasting: switch the insert method to `type` in Settings.
+- Wrong microphone: pick the right one in Settings.
+- It will not start: run `debug.bat` and read the error, or check `whisp.log`.
 
 ## License
 
-[MIT](LICENSE) © ROHITCRAFTSYT
+[MIT](LICENSE), © ROHITCRAFTSYT

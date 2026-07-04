@@ -1,4 +1,4 @@
-"""Floating status pill with a live waveform, like Wispr Flow's indicator.
+"""Floating status pill with a live waveform.
 
 A borderless, always-on-top rounded pill at the bottom of the screen:
 - while recording it animates bars from real microphone levels

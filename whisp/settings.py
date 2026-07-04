@@ -124,7 +124,7 @@ class SettingsWindow:
 
         btns = ttk.Frame(f)
         btns.grid(row=row, column=0, columnspan=2, pady=(12, 0), sticky="e")
-        ttk.Button(btns, text="Save && Apply", command=self.save).pack(
+        ttk.Button(btns, text="Save & Apply", command=self.save).pack(
             side="left", padx=4)
         ttk.Button(btns, text="Cancel", command=self.win.destroy).pack(side="left")
 

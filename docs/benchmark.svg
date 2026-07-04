@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 270" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="880" height="270" rx="10" fill="#0d1117"/>
+  <text x="40" y="40" fill="#e6edf3" font-size="16" font-weight="600">Time to transcribe a 14-second dictation</text>
+  <text x="40" y="62" fill="#8b949e" font-size="12.5">Measured on an Intel Core i3-1005G1 (2 cores), int8, beam size 2. Lower is better.</text>
+
+  <g font-size="13">
+    <text x="120" y="112" fill="#e6edf3" text-anchor="end">tiny</text>
+    <rect x="136" y="96" width="280" height="24" rx="4" fill="#388bfd"/>
+    <text x="426" y="113" fill="#e6edf3">1.5 s&#160;&#160;(9.6&#215; real time)</text>
+
+    <text x="120" y="162" fill="#e6edf3" text-anchor="end">base.en</text>
+    <rect x="136" y="146" width="355" height="24" rx="4" fill="#388bfd"/>
+    <text x="501" y="163" fill="#e6edf3">1.9 s&#160;&#160;(7.6&#215; real time)</text>
+
+    <text x="120" y="212" fill="#e6edf3" text-anchor="end">base</text>
+    <rect x="136" y="196" width="541" height="24" rx="4" fill="#388bfd"/>
+    <text x="687" y="213" fill="#e6edf3">2.9 s&#160;&#160;(4.9&#215; real time)</text>
+  </g>
+
+  <text x="40" y="250" fill="#8b949e" font-size="12">Every model transcribes several times faster than real time, so the text appears moments after you release the key.</text>
+</svg>

@@ -1,4 +1,4 @@
-"""WhispLocal — private, fully-offline voice dictation (Wispr Flow clone).
+"""WhispLocal — private, fully-offline voice dictation for Windows.
 
 Hold the hotkey and speak; release to transcribe and insert at the cursor.
 Quick-tap the hotkey to lock recording on; tap again to stop.

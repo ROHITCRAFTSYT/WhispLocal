@@ -1,6 +1,5 @@
 """Post-transcription text cleanup: filler removal, custom dictionary,
-spacing/capitalization fixes. This is the local stand-in for Wispr Flow's
-cloud LLM formatting pass.
+spacing and capitalization fixes.
 """
 import re
 

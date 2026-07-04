@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 250" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="880" height="250" rx="10" fill="#0d1117"/>
+  <rect x="18" y="40" width="844" height="160" rx="10" fill="none" stroke="#30363d" stroke-dasharray="6 5"/>
+  <text x="440" y="28" fill="#e6edf3" font-size="15" font-weight="600" text-anchor="middle">Dictation pipeline</text>
+
+  <g>
+    <rect x="38" y="95" width="140" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="108" y="121" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">Global hotkey</text>
+    <text x="108" y="140" fill="#8b949e" font-size="11.5" text-anchor="middle">hold or tap to lock</text>
+  </g>
+  <path d="M178 125 h26" stroke="#58a6ff" stroke-width="1.6"/>
+  <path d="M204 125 l-7 -4.5 v9 z" fill="#58a6ff"/>
+
+  <g>
+    <rect x="206" y="95" width="140" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="276" y="121" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">Microphone</text>
+    <text x="276" y="140" fill="#8b949e" font-size="11.5" text-anchor="middle">16 kHz capture</text>
+  </g>
+  <path d="M346 125 h26" stroke="#58a6ff" stroke-width="1.6"/>
+  <path d="M372 125 l-7 -4.5 v9 z" fill="#58a6ff"/>
+
+  <g>
+    <rect x="374" y="95" width="140" height="60" rx="8" fill="#161b22" stroke="#58a6ff"/>
+    <text x="444" y="121" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">faster-whisper</text>
+    <text x="444" y="140" fill="#8b949e" font-size="11.5" text-anchor="middle">int8, CPU only</text>
+  </g>
+  <path d="M514 125 h26" stroke="#58a6ff" stroke-width="1.6"/>
+  <path d="M540 125 l-7 -4.5 v9 z" fill="#58a6ff"/>
+
+  <g>
+    <rect x="542" y="95" width="140" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="612" y="121" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">Text cleanup</text>
+    <text x="612" y="140" fill="#8b949e" font-size="11.5" text-anchor="middle">fillers, dictionary</text>
+  </g>
+  <path d="M682 125 h26" stroke="#58a6ff" stroke-width="1.6"/>
+  <path d="M708 125 l-7 -4.5 v9 z" fill="#58a6ff"/>
+
+  <g>
+    <rect x="710" y="95" width="140" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+    <text x="780" y="121" fill="#e6edf3" font-size="13" font-weight="600" text-anchor="middle">Active window</text>
+    <text x="780" y="140" fill="#8b949e" font-size="11.5" text-anchor="middle">text at the cursor</text>
+  </g>
+
+  <text x="440" y="226" fill="#8b949e" font-size="12" text-anchor="middle">Every stage runs on your machine. No audio or text is sent anywhere.</text>
+</svg>
