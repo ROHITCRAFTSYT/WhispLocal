@@ -1,0 +1,310 @@
+"""WhispLocal — private, fully-offline voice dictation (Wispr Flow clone).
+
+Hold the hotkey and speak; release to transcribe and insert at the cursor.
+Quick-tap the hotkey to lock recording on; tap again to stop.
+An optional second hotkey transcribes AND translates speech to English.
+Everything — audio, models, history — stays on this machine.
+"""
+import json
+import os
+import socket
+import sys
+import threading
+import time
+import traceback
+
+import keyboard
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import configio
+from audio import Recorder
+from cleanup import clean
+from inject import insert
+from overlay import Overlay
+from settings import HistoryWindow, SettingsWindow
+from transcriber import Transcriber
+from tray import build_tray
+
+__version__ = "2.0.0"
+
+HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
+LOG_PATH = os.path.join(APP_DIR, "whisp.log")
+MAX_LOG_BYTES = 256 * 1024
+MAX_HISTORY_BYTES = 1024 * 1024
+
+TAP_THRESHOLD = 0.35  # seconds; shorter press = toggle mode
+SINGLE_INSTANCE_PORT = 48917
+
+# States
+IDLE, HOLDING, LOCKED, STOPPING = "idle", "holding", "locked", "stopping"
+
+
+def log(msg):
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+
+
+def rotate_log():
+    """Keep whisp.log from growing without bound."""
+    try:
+        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > MAX_LOG_BYTES:
+            with open(LOG_PATH, encoding="utf-8", errors="replace") as f:
+                tail = f.readlines()[-200:]
+            with open(LOG_PATH, "w", encoding="utf-8") as f:
+                f.writelines(tail)
+    except OSError:
+        pass
+
+
+def acquire_single_instance():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
+        s.listen(1)
+        return s
+    except OSError:
+        return None
+
+
+class App:
+    def __init__(self):
+        rotate_log()
+        self.version = __version__
+        self.config = configio.load_config(APP_DIR)
+        self.recorder = Recorder(self.config.get("input_device") or None)
+        self.transcriber = Transcriber(self.config)
+        self.overlay = Overlay(get_levels=lambda: list(self.recorder.levels))
+        self.state = IDLE
+        self.task = "transcribe"
+        self.paused = False
+        self.press_time = 0.0
+        self.lock = threading.Lock()
+        self.hotkey = self.config.get("hotkey", "right ctrl")
+        self.tray = None
+        self._hooks = []
+
+    # ----- config ---------------------------------------------------------
+    def save_config(self, cfg):
+        self.config = cfg
+        configio.save_config(APP_DIR, cfg)
+
+    def reload_config(self):
+        try:
+            self.config = configio.load_config(APP_DIR)
+            self.hotkey = self.config.get("hotkey", "right ctrl")
+            self._register_hotkeys()
+
+            device = self.config.get("input_device") or None
+            if device != self.recorder.device and not self.recorder.active:
+                self.recorder = Recorder(device)
+
+            new_t = Transcriber(self.config)
+            old_t = self.transcriber
+            if (new_t.model_name, new_t.language, new_t.beam_size) != \
+               (old_t.model_name, old_t.language, old_t.beam_size):
+                self.transcriber = new_t  # loads lazily on next dictation
+            if self.tray:
+                self.tray.update_menu()
+            log("config applied")
+        except Exception as e:
+            log(f"config reload failed: {e}")
+
+    def set_model(self, name):
+        cfg = dict(self.config)
+        cfg["model"] = name
+        self.save_config(cfg)
+        self.reload_config()
+        log(f"model switched to {name}")
+
+    def toggle_pause(self):
+        self.paused = not self.paused
+        if self.tray:
+            self.tray.update_menu()
+
+    # ----- windows ----------------------------------------------------------
+    def open_settings(self):
+        self.overlay.call(lambda: SettingsWindow(self.overlay.root, self))
+
+    def open_history(self):
+        self.overlay.call(lambda: HistoryWindow(self.overlay.root, HISTORY_PATH))
+
+    # ----- sounds -----------------------------------------------------------
+    def _beep(self, freq, ms=70):
+        if not self.config.get("sound_cues", True):
+            return
+        try:
+            import winsound
+            threading.Thread(target=winsound.Beep, args=(freq, ms),
+                             daemon=True).start()
+        except Exception:
+            pass
+
+    # ----- hotkey state machine ----------------------------------------------
+    def _register_hotkeys(self):
+        # Re-registering removes the release handler; if a recording is in
+        # flight it would never get its stop event — abort it first.
+        if self.state != IDLE:
+            self.recorder.abort()
+            self.state = IDLE
+            self.overlay.post("hide")
+        for h in self._hooks:
+            try:
+                keyboard.unhook(h)
+            except (KeyError, ValueError):
+                pass
+        self._hooks = []
+        pairs = [(self.hotkey, "transcribe")]
+        tr = (self.config.get("translate_hotkey") or "").strip()
+        if tr:
+            pairs.append((tr, "translate"))
+        for key, task in pairs:
+            self._hooks.append(keyboard.on_press_key(
+                key, lambda e, t=task: self.on_press(t), suppress=False))
+            self._hooks.append(keyboard.on_release_key(
+                key, lambda e, t=task: self.on_release(t), suppress=False))
+
+    def on_press(self, task):
+        with self.lock:
+            if self.state == IDLE:
+                if self.paused:
+                    return
+                self.state = HOLDING
+                self.task = task
+                self.press_time = time.time()
+                self._start_recording()
+            elif self.state == LOCKED and task == self.task:
+                self.state = STOPPING  # release for this press is ignored
+                self._finish_recording()
+
+    def on_release(self, task):
+        with self.lock:
+            if task != self.task:
+                return
+            if self.state == HOLDING:
+                if time.time() - self.press_time < TAP_THRESHOLD:
+                    self.state = LOCKED
+                    self.overlay.post("locked")
+                else:
+                    self.state = IDLE
+                    self._finish_recording()
+            elif self.state == STOPPING:
+                self.state = IDLE
+
+    def _start_recording(self):
+        try:
+            self.recorder.start()
+            self.overlay.post("recording_translate" if self.task == "translate"
+                              else "recording")
+            self._beep(880)
+        except Exception as e:
+            self.state = IDLE
+            log(f"mic error: {e}")
+            self.overlay.post("error")
+
+    def _finish_recording(self):
+        # Note: does not touch self.state — callers own the transition.
+        self._beep(440)
+        audio = self.recorder.stop()
+        if audio is None or len(audio) < 4000:  # < 0.25 s — ignore blips
+            self.overlay.post("hide")
+            return
+        self.overlay.post("translate" if self.task == "translate"
+                          else "transcribing")
+        threading.Thread(target=self._process, args=(audio, self.task),
+                         daemon=True).start()
+
+    # ----- pipeline -------------------------------------------------------
+    def _process(self, audio, task):
+        try:
+            t0 = time.time()
+            text = self.transcriber.transcribe(audio, task=task)
+            text = clean(text, self.config)
+            if text:
+                insert(text, self.config)
+                self._save_history(text, task, len(audio) / 16000,
+                                   time.time() - t0)
+                self.overlay.post("done")
+            else:
+                self.overlay.post("hide")
+        except Exception as e:
+            log(f"pipeline error: {e}\n{traceback.format_exc()}")
+            self.overlay.post("error")
+
+    def _save_history(self, text, task, audio_secs, proc_secs):
+        if not self.config.get("save_history", True):
+            return
+        entry = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "text": text,
+            "task": task,
+            "audio_s": round(audio_secs, 1),
+            "processing_s": round(proc_secs, 1),
+        }
+        with open(HISTORY_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        try:
+            if os.path.getsize(HISTORY_PATH) > MAX_HISTORY_BYTES:
+                with open(HISTORY_PATH, encoding="utf-8") as f:
+                    tail = f.readlines()[-500:]
+                with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+                    f.writelines(tail)
+        except OSError:
+            pass
+
+    # ----- lifecycle ------------------------------------------------------
+    def quit(self):
+        self.recorder.abort()
+        self.overlay.post("quit")
+        if self.tray:
+            self.tray.stop()
+        threading.Timer(0.5, lambda: os._exit(0)).start()
+
+    def _preload_model(self):
+        try:
+            self.overlay.post("loading")
+            self.transcriber.load()
+            self.overlay.post("hide")
+            log(f"model '{self.transcriber.model_name}' loaded")
+        except Exception as e:
+            log(f"model load failed: {e}\n{traceback.format_exc()}")
+            self.overlay.post("error")
+
+    def run(self):
+        self._register_hotkeys()
+        self.tray = build_tray(self)
+        threading.Thread(target=self.tray.run, daemon=True).start()
+        threading.Thread(target=self._preload_model, daemon=True).start()
+        log(f"WhispLocal {__version__} started — hotkey: {self.hotkey}, "
+            f"model: {self.transcriber.model_name}")
+        self.overlay.run()  # tkinter main loop (main thread)
+
+
+if __name__ == "__main__":
+    guard = acquire_single_instance()
+    if guard is None:
+        import tkinter as tk
+        from tkinter import messagebox
+        r = tk.Tk()
+        r.withdraw()
+        messagebox.showinfo(
+            "WhispLocal",
+            "WhispLocal is already running — look for the mic icon "
+            "in the system tray.")
+        sys.exit(0)
+    try:
+        App().run()
+    except Exception as e:  # pythonw has no console — surface fatal errors
+        log(f"fatal: {e}\n{traceback.format_exc()}")
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showerror(
+                "WhispLocal failed to start",
+                f"{e}\n\nDetails are in whisp.log.")
+        except Exception:
+            pass
+        sys.exit(1)

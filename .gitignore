@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+history.jsonl
+whisp.log
+config.json
+*.wav

@@ -1,0 +1,17 @@
+{
+  "hotkey": "right ctrl",
+  "translate_hotkey": "",
+  "model": "base",
+  "language": null,
+  "beam_size": 2,
+  "cpu_threads": 0,
+  "input_device": null,
+  "insert_mode": "paste",
+  "restore_clipboard": true,
+  "remove_fillers": true,
+  "capitalize_first": true,
+  "strip_trailing_period": false,
+  "sound_cues": true,
+  "save_history": true,
+  "dictionary": {}
+}

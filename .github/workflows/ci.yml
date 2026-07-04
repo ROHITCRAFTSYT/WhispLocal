@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile all modules
+        run: python -m py_compile whisp/app.py whisp/audio.py whisp/cleanup.py whisp/inject.py whisp/overlay.py whisp/settings.py whisp/transcriber.py whisp/tray.py warmup.py
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
