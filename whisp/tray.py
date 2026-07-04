@@ -49,11 +49,24 @@ def build_tray(app):
         )
         for label, code in LANGUAGE_CHOICES
     ] + [pystray.MenuItem("More in Settings…", None, enabled=False)]
+    mode_items = [
+        pystray.MenuItem(
+            "Dictation (speech to text)",
+            lambda *a: app.set_mode("dictate"),
+            radio=True,
+            checked=lambda item: app.config.get("mode", "dictate") != "command"),
+        pystray.MenuItem(
+            "Voice control (open apps, commands)",
+            lambda *a: app.set_mode("command"),
+            radio=True,
+            checked=lambda item: app.config.get("mode") == "command"),
+    ]
     menu = pystray.Menu(
         pystray.MenuItem(lambda item: f"WhispLocal {app.version} — hotkey: {app.hotkey}",
                          None, enabled=False),
         pystray.MenuItem("Hold to talk · quick-tap to lock on", None, enabled=False),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Mode", pystray.Menu(*mode_items)),
         pystray.MenuItem("Settings…", lambda *a: app.open_settings()),
         pystray.MenuItem("History…", lambda *a: app.open_history()),
         pystray.MenuItem("Model", pystray.Menu(*model_items)),

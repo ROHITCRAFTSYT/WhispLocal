@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.0 — 2026-07-04
+
+### Added
+- Voice control mode: a second mode next to dictation, switchable from
+  the tray (Mode menu) or usable in parallel through its own hotkey.
+  Spoken commands are parsed and executed locally: open apps (indexed
+  from the Start Menu), open sites and folders, web and YouTube search,
+  type text, press key combinations, volume and media control, window
+  management, scrolling and clicking, screenshots, lock screen, and a
+  delayed, voice-cancellable shutdown.
+- Spoken confirmations through the built-in Windows speech engine
+  (toggle in Settings).
+- Command feedback messages in the on-screen pill; green indicator while
+  listening for a command.
+
 ## 2.1.0 — 2026-07-04
 
 ### Added

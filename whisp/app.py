@@ -22,13 +22,14 @@ import configio
 from adaptive import Adaptive
 from audio import Recorder
 from cleanup import clean
+from commands import CommandEngine, speak
 from inject import insert
 from overlay import Overlay
 from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -78,9 +79,11 @@ class App:
         self.transcriber = Transcriber(self.config)
         self.adaptive = Adaptive(
             APP_DIR, enabled=self.config.get("adaptive_learning", True))
+        self.commands = CommandEngine()  # app index builds in background
         self.overlay = Overlay(get_levels=lambda: list(self.recorder.levels))
         self.state = IDLE
         self.task = "transcribe"
+        self.active_key = None
         self.paused = False
         self.press_time = 0.0
         self.lock = threading.Lock()
@@ -124,6 +127,17 @@ class App:
         self.save_config(cfg)
         self.reload_config()
         log(f"model switched to {name}")
+
+    def set_mode(self, mode):
+        cfg = dict(self.config)
+        cfg["mode"] = mode
+        self.save_config(cfg)
+        if self.tray:
+            self.tray.update_menu()
+        label = ("Voice control mode: speak commands"
+                 if mode == "command" else "Dictation mode")
+        self.overlay.post(("message", label, True))
+        log(f"mode set to {mode}")
 
     def set_language(self, code):
         cfg = dict(self.config)
@@ -176,32 +190,42 @@ class App:
             except (KeyError, ValueError):
                 pass
         self._hooks = []
-        pairs = [(self.hotkey, "transcribe")]
+        pairs = [(self.hotkey, "main")]
         tr = (self.config.get("translate_hotkey") or "").strip()
         if tr:
             pairs.append((tr, "translate"))
-        for key, task in pairs:
+        cmd = (self.config.get("command_hotkey") or "").strip()
+        if cmd:
+            pairs.append((cmd, "command"))
+        for key, key_id in pairs:
             self._hooks.append(keyboard.on_press_key(
-                key, lambda e, t=task: self.on_press(t), suppress=False))
+                key, lambda e, k=key_id: self.on_press(k), suppress=False))
             self._hooks.append(keyboard.on_release_key(
-                key, lambda e, t=task: self.on_release(t), suppress=False))
+                key, lambda e, k=key_id: self.on_release(k), suppress=False))
 
-    def on_press(self, task):
+    def _resolve_task(self, key_id):
+        if key_id == "main":
+            return ("command" if self.config.get("mode") == "command"
+                    else "transcribe")
+        return key_id
+
+    def on_press(self, key_id):
         with self.lock:
             if self.state == IDLE:
                 if self.paused:
                     return
                 self.state = HOLDING
-                self.task = task
+                self.active_key = key_id
+                self.task = self._resolve_task(key_id)
                 self.press_time = time.time()
                 self._start_recording()
-            elif self.state == LOCKED and task == self.task:
+            elif self.state == LOCKED and key_id == self.active_key:
                 self.state = STOPPING  # release for this press is ignored
                 self._finish_recording()
 
-    def on_release(self, task):
+    def on_release(self, key_id):
         with self.lock:
-            if task != self.task:
+            if key_id != self.active_key:
                 return
             if self.state == HOLDING:
                 if time.time() - self.press_time < TAP_THRESHOLD:
@@ -216,8 +240,9 @@ class App:
     def _start_recording(self):
         try:
             self.recorder.start()
-            self.overlay.post("recording_translate" if self.task == "translate"
-                              else "recording")
+            state = {"translate": "recording_translate",
+                     "command": "recording_command"}.get(self.task, "recording")
+            self.overlay.post(state)
             self._beep(880)
         except Exception as e:
             self.state = IDLE
@@ -231,13 +256,16 @@ class App:
         if audio is None or len(audio) < 4000:  # < 0.25 s — ignore blips
             self.overlay.post("hide")
             return
-        self.overlay.post("translate" if self.task == "translate"
-                          else "transcribing")
+        self.overlay.post({"translate": "translate",
+                           "command": "thinking"}.get(self.task, "transcribing"))
         threading.Thread(target=self._process, args=(audio, self.task),
                          daemon=True).start()
 
     # ----- pipeline -------------------------------------------------------
     def _process(self, audio, task):
+        if task == "command":
+            self._process_command(audio)
+            return
         try:
             t0 = time.time()
             hot = self.adaptive.hotwords()
@@ -268,6 +296,26 @@ class App:
                 self.overlay.post("hide")
         except Exception as e:
             log(f"pipeline error: {e}\n{traceback.format_exc()}")
+            self.overlay.post("error")
+
+    def _process_command(self, audio):
+        try:
+            # Commands are English phrases; pinning the language makes
+            # short utterances like "open chrome" far more reliable.
+            text, _lang, _prob = self.transcriber.transcribe(
+                audio, task="transcribe", language="en")
+            if not text:
+                self.overlay.post("hide")
+                return
+            ok, feedback = self.commands.run(text)
+            log(f"command: {text!r} -> {ok} {feedback!r}")
+            self.overlay.post(("message", feedback or "Done", ok))
+            if self.config.get("voice_replies", True):
+                speak(feedback)
+            self._save_history(f"{text} -> {feedback}", "command",
+                               len(audio) / 16000, 0)
+        except Exception as e:
+            log(f"command error: {e}\n{traceback.format_exc()}")
             self.overlay.post("error")
 
     def _save_history(self, text, task, audio_secs, proc_secs):

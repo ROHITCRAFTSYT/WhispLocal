@@ -1,6 +1,9 @@
 {
   "hotkey": "right ctrl",
   "translate_hotkey": "",
+  "command_hotkey": "",
+  "mode": "dictate",
+  "voice_replies": true,
   "model": "base",
   "language": null,
   "beam_size": 2,

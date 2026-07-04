@@ -22,6 +22,7 @@ TEXT_STATES = {
     "error": ("✕  Error — see whisp.log", "#ff5555"),
     "loading": ("Loading model…", ACCENT),
     "translate": ("Translating…", "#bd93f9"),
+    "thinking": ("Working on it", "#50fa7b"),
 }
 
 
@@ -96,8 +97,9 @@ class Overlay:
         self.root.deiconify()
         self._tick = 0
         self._draw()
-        if state in ("done", "error"):
-            self._hide_job = self.root.after(1600, self.root.withdraw)
+        if state in ("done", "error") or (
+                isinstance(state, tuple) and state[0] == "message"):
+            self._hide_job = self.root.after(2400, self.root.withdraw)
 
     # ----- drawing --------------------------------------------------------
     def _pill(self):
@@ -113,10 +115,22 @@ class Overlay:
         c, w, h = self.canvas, self.W, self.H
         st = self.state
 
-        if st in ("recording", "locked", "recording_translate"):
-            # Status dot (red = hold mode, orange = locked, purple = translate).
+        if isinstance(st, tuple) and st[0] == "message":
+            _, text, ok = st
+            if len(text) > 44:
+                text = text[:43] + "…"
+            c.create_text(w // 2, h // 2, text=text,
+                          font=("Segoe UI", 11, "bold"),
+                          fill="#50fa7b" if ok else "#ff5555")
+            return
+
+        if st in ("recording", "locked", "recording_translate",
+                  "recording_command"):
+            # Status dot: red = dictation, orange = locked,
+            # purple = translate, green = voice control.
             color = {"recording": "#ff5555", "locked": "#ffb86c",
-                     "recording_translate": "#bd93f9"}[st]
+                     "recording_translate": "#bd93f9",
+                     "recording_command": "#50fa7b"}[st]
             pulse = 5 + (self._tick // 4) % 2
             c.create_oval(22 - pulse, h // 2 - pulse, 22 + pulse, h // 2 + pulse,
                           fill=color, outline=color)

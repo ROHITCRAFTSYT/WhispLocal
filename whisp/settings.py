@@ -85,6 +85,14 @@ class SettingsWindow:
                   foreground="#666").grid(row=row + 1, column=1, sticky="w")
         row += 2
 
+        label("Voice control hotkey")
+        self.cmd_hotkey = ttk.Entry(f, width=26)
+        self.cmd_hotkey.insert(0, cfg.get("command_hotkey", ""))
+        self.cmd_hotkey.grid(row=row, column=1, sticky="w", pady=3)
+        ttk.Label(f, text='(blank = disabled; say "open chrome", "volume up"...)',
+                  foreground="#666").grid(row=row + 1, column=1, sticky="w")
+        row += 2
+
         label("Insert method")
         self.insert_mode = ttk.Combobox(
             f, values=["paste", "type"], state="readonly", width=24)
@@ -108,6 +116,7 @@ class SettingsWindow:
             ("restore_clipboard", "Restore clipboard after paste", True),
             ("adaptive_learning",
              "Learn my vocabulary and languages (stored locally)", True),
+            ("voice_replies", "Speak confirmations in voice control mode", True),
         ]:
             var = tk.BooleanVar(value=bool(cfg.get(key, default)))
             ttk.Checkbutton(f, text=text, variable=var).grid(
@@ -137,8 +146,10 @@ class SettingsWindow:
         import keyboard
         hotkey = self.hotkey.get().strip().lower()
         tr_hotkey = self.tr_hotkey.get().strip().lower()
+        cmd_hotkey = self.cmd_hotkey.get().strip().lower()
         for name, k in [("Dictation hotkey", hotkey),
-                        ("Translate hotkey", tr_hotkey)]:
+                        ("Translate hotkey", tr_hotkey),
+                        ("Voice control hotkey", cmd_hotkey)]:
             if not k:
                 continue
             try:
@@ -152,9 +163,10 @@ class SettingsWindow:
             messagebox.showerror("WhispLocal", "Dictation hotkey cannot be empty.",
                                  parent=self.win)
             return
-        if tr_hotkey and tr_hotkey == hotkey:
+        used = [k for k in (hotkey, tr_hotkey, cmd_hotkey) if k]
+        if len(used) != len(set(used)):
             messagebox.showerror("WhispLocal",
-                                 "The two hotkeys must be different keys.",
+                                 "Each hotkey must be a different key.",
                                  parent=self.win)
             return
 
@@ -174,6 +186,7 @@ class SettingsWindow:
             "input_device": None if mic == "System default" else mic,
             "hotkey": hotkey,
             "translate_hotkey": tr_hotkey,
+            "command_hotkey": cmd_hotkey,
             "insert_mode": self.insert_mode.get(),
             "beam_size": max(1, min(5, int(self.beam.get() or 2))),
             "dictionary": dictionary,

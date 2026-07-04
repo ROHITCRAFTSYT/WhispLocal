@@ -111,6 +111,39 @@ English. Translate mode needs a multilingual model (one without the
 once, which is the only situation where the app needs a network
 connection.
 
+## Voice control mode
+
+WhispLocal has two modes. Dictation is the default. Switch to voice
+control from the tray (Mode menu) and the same hotkey stops typing what
+you say and starts doing what you say. If you want both at once, give
+voice control its own hotkey in Settings and keep dictating on the main
+one. Confirmations are spoken back through the built-in Windows voice;
+turn that off in Settings if it gets chatty.
+
+Commands are matched locally against a fixed set of patterns. Apps are
+found by indexing your Start Menu, so "open OBS Studio" works for
+anything installed. What you can say:
+
+| Say | Happens |
+|---|---|
+| "open chrome", "launch spotify" | Starts the app (fuzzy matching included) |
+| "open downloads", "open documents" | Opens the folder |
+| "open youtube.com", "go to github" | Opens the site |
+| "search for python tutorials" | Google search in your browser |
+| "play lo-fi beats on youtube" | YouTube search |
+| "type hello there" | Types the text at the cursor |
+| "press control shift s", "press enter" | Sends the key combination |
+| "volume up", "mute", "next song", "pause" | Audio and media control |
+| "close window", "maximize", "switch window" | Window management |
+| "scroll down", "click", "right click" | Pointer control |
+| "take a screenshot" | Saves a PNG to Pictures |
+| "lock the screen" | Locks Windows |
+| "shut down the computer" | Shutdown after 60 s; "cancel shutdown" aborts |
+| "what time is it", "what's the date" | Answers on screen and out loud |
+
+Deliberately not included: deleting files, and anything destructive
+without an undo. Command recognition is English-only for now.
+
 ## It learns how you talk
 
 WhispLocal keeps a small local profile (`adaptive.json`) and uses it to
