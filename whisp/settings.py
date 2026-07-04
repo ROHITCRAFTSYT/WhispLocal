@@ -106,6 +106,8 @@ class SettingsWindow:
             ("sound_cues", "Sound cues on start/stop", True),
             ("save_history", "Save dictation history", True),
             ("restore_clipboard", "Restore clipboard after paste", True),
+            ("adaptive_learning",
+             "Learn my vocabulary and languages (stored locally)", True),
         ]:
             var = tk.BooleanVar(value=bool(cfg.get(key, default)))
             ttk.Checkbutton(f, text=text, variable=var).grid(
@@ -185,15 +187,18 @@ class SettingsWindow:
 
 
 class HistoryWindow:
-    def __init__(self, root, history_path):
+    def __init__(self, root, history_path, app=None):
+        self.app = app
         self.win = tk.Toplevel(root)
         self.win.title("WhispLocal History")
         self.win.attributes("-topmost", True)
-        self.win.geometry("560x420")
+        self.win.geometry("600x440")
         frame = ttk.Frame(self.win, padding=8)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Recent dictations (newest first). "
-                              "Double-click a line to copy it.").pack(anchor="w")
+        ttk.Label(frame, text="Recent dictations (newest first). Double-click "
+                              "to copy. Select a line and press Correct to "
+                              "teach the app what you actually said."
+                  ).pack(anchor="w")
         self.listbox = tk.Listbox(frame, font=("Segoe UI", 10))
         self.listbox.pack(fill="both", expand=True, pady=6)
         self.entries = []
@@ -208,8 +213,13 @@ class HistoryWindow:
         for e in self.entries[:200]:
             self.listbox.insert("end", f"[{e.get('ts', '?')}]  {e.get('text', '')}")
         self.listbox.bind("<Double-Button-1>", self._copy)
-        self.status = ttk.Label(frame, text=f"{len(self.entries)} entries")
-        self.status.pack(anchor="w")
+        bottom = ttk.Frame(frame)
+        bottom.pack(fill="x")
+        self.status = ttk.Label(bottom, text=f"{len(self.entries)} entries")
+        self.status.pack(side="left")
+        if app is not None:
+            ttk.Button(bottom, text="Correct…", command=self._correct).pack(
+                side="right")
 
     def _copy(self, _event):
         sel = self.listbox.curselection()
@@ -218,3 +228,35 @@ class HistoryWindow:
         import pyperclip
         pyperclip.copy(self.entries[sel[0]].get("text", ""))
         self.status.config(text="Copied to clipboard.")
+
+    def _correct(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            self.status.config(text="Select a dictation first.")
+            return
+        original = self.entries[sel[0]].get("text", "")
+        dlg = tk.Toplevel(self.win)
+        dlg.title("Teach a correction")
+        dlg.attributes("-topmost", True)
+        f = ttk.Frame(dlg, padding=10)
+        f.pack(fill="both", expand=True)
+        ttk.Label(f, text="What the app heard:").pack(anchor="w")
+        ttk.Label(f, text=original, wraplength=460,
+                  foreground="#666").pack(anchor="w", pady=(0, 8))
+        ttk.Label(f, text="What you actually said (edit below):").pack(anchor="w")
+        box = tk.Text(f, width=60, height=4, font=("Segoe UI", 10), wrap="word")
+        box.pack(pady=(2, 8))
+        box.insert("1.0", original)
+
+        def save():
+            corrected = box.get("1.0", "end").strip()
+            n = self.app.teach_correction(original, corrected)
+            self.status.config(
+                text=f"Learned {n} correction(s)." if n else
+                "No word-level changes found to learn.")
+            dlg.destroy()
+
+        btns = ttk.Frame(f)
+        btns.pack(anchor="e")
+        ttk.Button(btns, text="Learn", command=save).pack(side="left", padx=4)
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="left")

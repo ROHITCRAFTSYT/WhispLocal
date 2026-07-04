@@ -2,6 +2,7 @@ venv/
 __pycache__/
 *.pyc
 history.jsonl
+adaptive.json
 whisp.log
 config.json
 *.wav

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.1.0 — 2026-07-04
+
+### Added
+- Local personalization engine (`adaptive.json`): learns your vocabulary
+  from accepted dictations and feeds it to the recognizer as hotwords,
+  learns corrections you teach it in the History window (Correct…), and
+  learns which languages you dictate in. Runs entirely on disk; can be
+  turned off in Settings; delete the file to reset.
+- Language quick-switch in the tray menu.
+- Low-confidence language detections retry pinned to your usual language.
+- Native-script prompts for Hindi, Bengali, Tamil, Telugu, Marathi,
+  Gujarati, Urdu, and Punjabi, so transcriptions come out in the right
+  script instead of Latin transliteration.
+
+### Fixed
+- The `type` insert method now sends OS-level unicode events, so scripts
+  not on your keyboard layout (Devanagari and others) type correctly.
+- Vocabulary learning handles scripts with combining marks.
+- Switching language or accuracy no longer reloads the model.
+
 ## 2.0.0 — 2026-07-04
 
 ### Added

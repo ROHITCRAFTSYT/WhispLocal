@@ -16,7 +16,9 @@ def insert(text, config):
         return
     mode = config.get("insert_mode", "paste")
     if mode == "type":
-        keyboard.write(text, delay=0.005)
+        # exact=True sends OS-level unicode events, so scripts not on the
+        # active keyboard layout (Devanagari, Arabic, CJK...) type correctly.
+        keyboard.write(text, delay=0.005, exact=True)
         return
 
     saved = None

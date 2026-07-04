@@ -111,6 +111,38 @@ English. Translate mode needs a multilingual model (one without the
 once, which is the only situation where the app needs a network
 connection.
 
+## It learns how you talk
+
+WhispLocal keeps a small local profile (`adaptive.json`) and uses it to
+get more accurate the more you dictate:
+
+- Words you use often become recognition hints. Names, project terms,
+  and jargon that a generic model would fumble start coming out right
+  because the recognizer is told to expect them.
+- When a transcription comes out wrong, open History, select it, and
+  press Correct. The app diffs your fix against what it heard and
+  applies that correction automatically from then on.
+- It notices which languages you actually dictate in. Automatic language
+  detection is unreliable on short clips, so when detection is unsure,
+  WhispLocal retries with your usual language.
+
+This is a personalization layer on top of the recognizer, not neural
+network training, which no laptop CPU could do. In practice it is the
+part of accuracy you can actually feel: your own words, in your own
+languages. It stays on your disk, can be turned off in Settings, and
+deleting `adaptive.json` resets it.
+
+## Dictating in other languages
+
+Pick your language from the tray (Language menu) or Settings instead of
+relying on auto-detection; it is faster and much more reliable for short
+dictations. For Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu,
+and Punjabi, WhispLocal prompts the model in the native script, so you
+get देवनागरी rather than a Latin transliteration. The multilingual
+models (`tiny`, `base`, `small`, no `.en` suffix) handle non-English
+speech, and `small` is noticeably better than `base` for Hindi if you
+can accept the extra couple of seconds.
+
 ## Privacy
 
 - Transcription happens on your CPU. The app has no telemetry, no
@@ -120,6 +152,9 @@ connection.
 - History is stored in plain text in `history.jsonl` next to the app,
   so the History window can show it. Turn it off in Settings or delete
   the file whenever you want.
+- The personalization profile in `adaptive.json` contains word
+  frequencies, language counts, and your corrections. Same rules: local
+  only, optional, deletable.
 - The default insert method puts the dictated text on the clipboard
   briefly and then restores what was there before. If you turn off
   clipboard restore, the dictated text stays on the clipboard. The

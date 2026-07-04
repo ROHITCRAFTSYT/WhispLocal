@@ -13,5 +13,6 @@
   "strip_trailing_period": false,
   "sound_cues": true,
   "save_history": true,
+  "adaptive_learning": true,
   "dictionary": {}
 }

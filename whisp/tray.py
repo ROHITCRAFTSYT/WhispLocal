@@ -7,6 +7,15 @@ from PIL import Image, ImageDraw
 
 from settings import MODELS
 
+LANGUAGE_CHOICES = [
+    ("Auto-detect", None),
+    ("English", "en"),
+    ("Hindi", "hi"),
+    ("Spanish", "es"),
+    ("French", "fr"),
+    ("German", "de"),
+]
+
 
 def make_icon(size=64):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -30,6 +39,16 @@ def build_tray(app):
         )
         for m in MODELS
     ]
+    lang_items = [
+        pystray.MenuItem(
+            label,
+            partial(lambda code, *a: app.set_language(code), code),
+            radio=True,
+            checked=partial(
+                lambda code, item: app.config.get("language") == code, code),
+        )
+        for label, code in LANGUAGE_CHOICES
+    ] + [pystray.MenuItem("More in Settings…", None, enabled=False)]
     menu = pystray.Menu(
         pystray.MenuItem(lambda item: f"WhispLocal {app.version} — hotkey: {app.hotkey}",
                          None, enabled=False),
@@ -38,6 +57,7 @@ def build_tray(app):
         pystray.MenuItem("Settings…", lambda *a: app.open_settings()),
         pystray.MenuItem("History…", lambda *a: app.open_history()),
         pystray.MenuItem("Model", pystray.Menu(*model_items)),
+        pystray.MenuItem("Language", pystray.Menu(*lang_items)),
         pystray.MenuItem("Pause dictation", lambda *a: app.toggle_pause(),
                          checked=lambda item: app.paused),
         pystray.Menu.SEPARATOR,

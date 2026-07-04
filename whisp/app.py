@@ -19,6 +19,7 @@ APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import configio
+from adaptive import Adaptive
 from audio import Recorder
 from cleanup import clean
 from inject import insert
@@ -27,7 +28,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -75,6 +76,8 @@ class App:
         self.config = configio.load_config(APP_DIR)
         self.recorder = Recorder(self.config.get("input_device") or None)
         self.transcriber = Transcriber(self.config)
+        self.adaptive = Adaptive(
+            APP_DIR, enabled=self.config.get("adaptive_learning", True))
         self.overlay = Overlay(get_levels=lambda: list(self.recorder.levels))
         self.state = IDLE
         self.task = "transcribe"
@@ -102,9 +105,13 @@ class App:
 
             new_t = Transcriber(self.config)
             old_t = self.transcriber
-            if (new_t.model_name, new_t.language, new_t.beam_size) != \
-               (old_t.model_name, old_t.language, old_t.beam_size):
+            if new_t.model_name != old_t.model_name:
                 self.transcriber = new_t  # loads lazily on next dictation
+            else:
+                # Keep the loaded model; just adopt the new options.
+                old_t.language = new_t.language
+                old_t.beam_size = new_t.beam_size
+            self.adaptive.enabled = self.config.get("adaptive_learning", True)
             if self.tray:
                 self.tray.update_menu()
             log("config applied")
@@ -118,6 +125,19 @@ class App:
         self.reload_config()
         log(f"model switched to {name}")
 
+    def set_language(self, code):
+        cfg = dict(self.config)
+        cfg["language"] = code
+        self.save_config(cfg)
+        self.reload_config()
+        log(f"language set to {code or 'auto'}")
+
+    def teach_correction(self, original, corrected):
+        n = self.adaptive.learn_correction(original, corrected)
+        if n:
+            log(f"learned {n} correction(s)")
+        return n
+
     def toggle_pause(self):
         self.paused = not self.paused
         if self.tray:
@@ -128,7 +148,8 @@ class App:
         self.overlay.call(lambda: SettingsWindow(self.overlay.root, self))
 
     def open_history(self):
-        self.overlay.call(lambda: HistoryWindow(self.overlay.root, HISTORY_PATH))
+        self.overlay.call(
+            lambda: HistoryWindow(self.overlay.root, HISTORY_PATH, app=self))
 
     # ----- sounds -----------------------------------------------------------
     def _beep(self, freq, ms=70):
@@ -219,10 +240,27 @@ class App:
     def _process(self, audio, task):
         try:
             t0 = time.time()
-            text = self.transcriber.transcribe(audio, task=task)
-            text = clean(text, self.config)
+            hot = self.adaptive.hotwords()
+            text, lang, prob = self.transcriber.transcribe(
+                audio, task=task, hotwords=hot)
+            # Auto-detection is shaky on short clips. If confidence is low
+            # and the user has a clear language habit, retry pinned to it.
+            if task == "transcribe" and not self.config.get("language"):
+                pref = self.adaptive.preferred_language()
+                if pref and pref != lang and prob < 0.6:
+                    retry, _, _ = self.transcriber.transcribe(
+                        audio, task=task, hotwords=hot, language=pref)
+                    if retry:
+                        log(f"language retry {lang}({prob:.2f}) -> {pref}")
+                        text, lang = retry, pref
+            cfg = dict(self.config)
+            cfg["dictionary"] = {**(self.config.get("dictionary") or {}),
+                                 **self.adaptive.learned_dictionary}
+            text = clean(text, cfg)
             if text:
                 insert(text, self.config)
+                if task == "transcribe":
+                    self.adaptive.record(text, lang)
                 self._save_history(text, task, len(audio) / 16000,
                                    time.time() - t0)
                 self.overlay.post("done")
