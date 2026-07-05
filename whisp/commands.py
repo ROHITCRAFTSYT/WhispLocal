@@ -39,14 +39,28 @@ KEY_WORDS = {
 KEY_WORDS.update({f"f{i}": f"f{i}" for i in range(1, 13)})
 
 SITES = {
-    "youtube": "https://www.youtube.com", "google": "https://www.google.com",
-    "gmail": "https://mail.google.com", "github": "https://github.com",
-    "whatsapp": "https://web.whatsapp.com", "instagram": "https://www.instagram.com",
+    "youtube": "https://www.youtube.com",
+    "youtube music": "https://music.youtube.com",
+    "google": "https://www.google.com", "gmail": "https://mail.google.com",
+    "github": "https://github.com", "whatsapp": "https://web.whatsapp.com",
+    "instagram": "https://www.instagram.com",
     "facebook": "https://www.facebook.com", "twitter": "https://x.com",
     "x": "https://x.com", "claude": "https://claude.ai",
-    "chatgpt": "https://chatgpt.com", "amazon": "https://www.amazon.in",
-    "flipkart": "https://www.flipkart.com", "spotify": "https://open.spotify.com",
-    "maps": "https://maps.google.com", "netflix": "https://www.netflix.com",
+    "chatgpt": "https://chatgpt.com", "gemini": "https://gemini.google.com",
+    "perplexity": "https://www.perplexity.ai",
+    "amazon": "https://www.amazon.in", "flipkart": "https://www.flipkart.com",
+    "spotify": "https://open.spotify.com", "maps": "https://maps.google.com",
+    "netflix": "https://www.netflix.com", "reddit": "https://www.reddit.com",
+    "linkedin": "https://www.linkedin.com",
+    "wikipedia": "https://www.wikipedia.org",
+    "stack overflow": "https://stackoverflow.com",
+    "drive": "https://drive.google.com", "docs": "https://docs.google.com",
+    "sheets": "https://sheets.google.com",
+    "calendar": "https://calendar.google.com",
+    "translate": "https://translate.google.com",
+    "outlook": "https://outlook.live.com", "teams": "https://teams.microsoft.com",
+    "notion": "https://www.notion.so", "twitch": "https://www.twitch.tv",
+    "telegram": "https://web.telegram.org",
 }
 
 ALIASES = {
