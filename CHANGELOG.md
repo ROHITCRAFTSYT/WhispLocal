@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.5.0 — 2026-07-05
+
+### Changed
+- "Open X" now checks whether the app is installed first. If it is, the
+  app opens; if it is not, it opens on the web (the known web version, or
+  a web search). No popup.
+- Downloading only happens when you explicitly say "download X" or
+  "install X". Say "open X in web" (or "... website") to force the web
+  version even when the app is installed.
+
+### Removed
+- The download confirmation popup, in favor of the simpler
+  installed-then-app, otherwise-web behavior above.
+
 ## 2.4.0 — 2026-07-05
 
 ### Changed

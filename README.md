@@ -126,8 +126,10 @@ anything installed. What you can say:
 
 | Say | Happens |
 |---|---|
-| "open chrome", "launch spotify" | Starts the app (fuzzy matching included) |
-| "open spotify" (not installed) | Asks "Download it?" — Yes opens the download page |
+| "open obs", "launch discord" | Opens the app if installed (fuzzy matching included) |
+| "open spotify" (not installed) | Opens the web version instead |
+| "open spotify in web" | Forces the web version even if the app is installed |
+| "download spotify" | Opens its official download page |
 | "close chrome", "quit spotify" | Closes the app gracefully (save prompts still appear) |
 | "open downloads", "open documents" | Opens the folder |
 | "open youtube.com", "go to github" | Opens the site |

@@ -109,6 +109,21 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(parse("look up the capital of Japan")[0], "lookup")
         self.assertEqual(parse("tell me about black holes")[0], "lookup")
 
+    def test_download_command(self):
+        self.assertEqual(kind_arg("download spotify"), ("download", "spotify"))
+        self.assertEqual(kind_arg("install discord"), ("download", "discord"))
+
+    def test_open_in_web_forces_web(self):
+        self.assertEqual(kind_arg("open spotify in web"),
+                         ("open_web", "spotify"))
+        self.assertEqual(kind_arg("open youtube in the browser"),
+                         ("open_web", "youtube"))
+        self.assertEqual(kind_arg("open notion website"),
+                         ("open_web", "notion"))
+
+    def test_plain_open_is_open_app(self):
+        self.assertEqual(kind_arg("open notepad"), ("open_app", "notepad"))
+
     def test_ordinary_speech_is_not_a_command(self):
         self.assertIsNone(parse("the meeting went well today"))
         self.assertIsNone(parse(""))
@@ -147,38 +162,48 @@ class FindAppTests(unittest.TestCase):
         self.assertIsNone(self.e.find_app("nonexistent app"))
 
 
-class DownloadPopupTests(unittest.TestCase):
+class OpenBehaviourTests(unittest.TestCase):
     def setUp(self):
         self.e = CommandEngine(build_index=False)
+        self.e.app_index = {"notepad plus plus": r"C:\fake\npp.lnk"}
         self.opened = []
+        self.launched = []
         self._real_open = commands.webbrowser.open
+        self._real_start = commands.os.startfile
         commands.webbrowser.open = lambda u: self.opened.append(u)
+        commands.os.startfile = lambda p: self.launched.append(p)
 
     def tearDown(self):
         commands.webbrowser.open = self._real_open
+        commands.os.startfile = self._real_start
 
-    def test_no_when_user_declines(self):
-        self.e.ask = lambda q: False
-        ok, msg = self.e.run("open chrome")
+    def test_installed_app_opens_the_app(self):
+        ok, msg = self.e.run("open notepad plus plus")
         self.assertTrue(ok)
-        self.assertIn("cancel", msg.lower())
-        self.assertEqual(self.opened, [])  # nothing opened
+        self.assertEqual(len(self.launched), 1)   # app launched
+        self.assertEqual(self.opened, [])         # browser not used
 
-    def test_opens_when_user_accepts(self):
-        self.e.ask = lambda q: True
-        ok, msg = self.e.run("open chrome")
+    def test_missing_app_with_known_site_opens_web_version(self):
+        ok, msg = self.e.run("open spotify")
         self.assertTrue(ok)
-        self.assertEqual(len(self.opened), 1)
-        self.assertIn("chrome", self.opened[0].lower())
+        self.assertEqual(self.launched, [])
+        self.assertIn("spotify.com", self.opened[0])
+        self.assertIn("web", msg.lower())
 
-    def test_installed_app_never_asks(self):
-        asked = []
-        self.e.ask = lambda q: asked.append(q) or True
-        self.e.app_index = {"google chrome": r"C:\fake\chrome.lnk"}
-        # find_app resolves it, so no download prompt — but os.startfile would
-        # run; guard by checking the parse/lookup path instead.
-        self.assertIsNotNone(self.e.find_app("chrome"))
-        self.assertEqual(asked, [])
+    def test_missing_unknown_app_opens_search(self):
+        ok, msg = self.e.run("open someunknownapp")
+        self.assertTrue(ok)
+        self.assertIn("google.com/search", self.opened[0])
+
+    def test_force_web_even_if_installed(self):
+        ok, msg = self.e.run("open notepad plus plus in web")
+        self.assertEqual(self.launched, [])       # app NOT launched
+        self.assertEqual(len(self.opened), 1)     # opened on web instead
+
+    def test_download_opens_download_page(self):
+        ok, msg = self.e.run("download spotify")
+        self.assertTrue(ok)
+        self.assertIn("spotify.com/download", self.opened[0])
 
 
 if __name__ == "__main__":

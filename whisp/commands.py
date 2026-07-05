@@ -152,15 +152,27 @@ def parse(text):
                           "tab", "this tab", "current tab", "this", "everything"):
             return ("close_app", target, None)
 
+    m = re.match(r"(?:download|install)\s+(?:the\s+)?(?:app\s+)?(.+)", t)
+    if m:
+        return ("download", m.group(1).strip(), None)
+
     m = re.match(r"(?:open|launch|start|run)\s+(?:the\s+)?(?:app\s+)?(.+)", t)
     if m:
         target = m.group(1).strip()
+        # "open X in the web / in browser / website / online" forces the web.
+        force_web = False
+        wm = re.search(
+            r"\s+(?:in|on)\s+(?:the\s+)?(?:web|browser|internet)$"
+            r"|\s+(?:website|online)$", target)
+        if wm:
+            target = target[:wm.start()].strip()
+            force_web = True
         for name, folder in FOLDERS.items():
             if target in (name, f"{name} folder", f"my {name}"):
                 return ("folder", folder, None)
         if "." in target or target.startswith("http"):
             return ("url", target, None)
-        return ("open_app", target, None)
+        return ("open_web" if force_web else "open_app", target, None)
 
     m = re.match(r"go to\s+(.+)", t)
     if m:
@@ -247,12 +259,10 @@ def parse(text):
 # ----- execution -------------------------------------------------------------
 
 class CommandEngine:
-    def __init__(self, build_index=True, note_saver=None, ask=None):
+    def __init__(self, build_index=True, note_saver=None):
         self.app_index = {}
         # note_saver(text) -> (ok, feedback); wired by the app to Obsidian.
         self.note_saver = note_saver
-        # ask(question) -> bool; wired by the app to a Yes/No popup.
-        self.ask = ask
         if build_index:
             threading.Thread(target=self._build_index, daemon=True).start()
 
@@ -340,16 +350,23 @@ class CommandEngine:
                 return idx[close[0]], close[0]
         return None
 
-    def _offer_download(self, arg):
-        """App not installed: ask (via popup) before opening a download page."""
+    def _open_web(self, arg, forced=False, installed=False):
+        """Open the app's web version (known site) or a web search for it."""
+        if arg in SITES:
+            webbrowser.open(SITES[arg])
+            site = arg.title()
+        else:
+            webbrowser.open("https://www.google.com/search?q=" + _quote(arg))
+            site = arg
+        if forced:
+            return True, f"Opening {site} on the web"
+        return True, f"{arg.title()} is not installed — opening it on the web"
+
+    def _download(self, arg):
+        """Explicit 'download X': open its official download page or a search."""
         known = arg in DOWNLOADS
         url = DOWNLOADS.get(arg) or (
             "https://www.google.com/search?q=" + _quote(f"download {arg}"))
-        if self.ask is not None:
-            question = (f'"{arg.title()}" does not seem to be installed.\n\n'
-                        f"Do you want to download it?")
-            if not self.ask(question):
-                return True, "Okay, cancelled"
         webbrowser.open(url)
         if known:
             return True, f"Opening the download page for {arg.title()}"
@@ -398,15 +415,21 @@ class CommandEngine:
 
     def _execute(self, kind, arg):
         if kind == "open_app":
+            # Verify the app is installed first: if so, open the app; if not,
+            # open it on the web. Download only happens on an explicit
+            # "download X" command.
             found = self.find_app(arg)
             if found:
                 target, label = found
                 os.startfile(target)
                 return True, f"Opening {label.title()}"
-            if arg in SITES:
-                webbrowser.open(SITES[arg])
-                return True, f"Opening {arg.title()}"
-            return self._offer_download(arg)
+            return self._open_web(arg, installed=False)
+
+        if kind == "open_web":
+            return self._open_web(arg, forced=True)
+
+        if kind == "download":
+            return self._download(arg)
 
         if kind == "close_app":
             return self._close_app(arg)
