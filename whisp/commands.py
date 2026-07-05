@@ -95,6 +95,10 @@ RESERVATION_SEARCH = "https://www.google.com/search?q="
 # Windows whose apps must never be closed by voice (shell, this app).
 _PROTECTED_CLOSE = ("program manager", "whisplocal", "task manager")
 
+# Browser processes — a title match inside one is a tab, not an app window.
+_BROWSER_EXES = frozenset((
+    "chrome", "msedge", "firefox", "brave", "opera", "opera_gx", "vivaldi"))
+
 SHORTCUTS = {
     "copy": ("ctrl+c", "Copied"), "paste": ("ctrl+v", "Pasted"),
     "cut": ("ctrl+x", "Cut"), "undo": ("ctrl+z", "Undone"),
@@ -390,10 +394,12 @@ class CommandEngine:
 
         self.app_index = index
 
-    def switch_to(self, term):
+    def switch_to(self, term, allow_browser=True):
         """If a window whose title contains `term` is open, focus it and
         return its title; otherwise return None. Lets 'open youtube' jump
-        to an already-open YouTube instead of opening a duplicate."""
+        to an already-open YouTube instead of opening a duplicate.
+        With allow_browser=False, browser tabs are ignored (so "open
+        notepad" won't grab a browser tab titled "notepad - Search")."""
         term = (term or "").strip().lower()
         if len(term) < 2:
             return None
@@ -403,6 +409,8 @@ class CommandEngine:
             if any(p in tl for p in _PROTECTED_CLOSE):
                 continue
             el = os.path.splitext(exe)[0].lower()
+            if not allow_browser and el in _BROWSER_EXES:
+                continue
             if term in tl or term == el:
                 # Prefer the most specific (shortest) matching title.
                 if best is None or len(title) < len(best[1]):
@@ -569,15 +577,30 @@ class CommandEngine:
         return ok, feedback
 
     def _execute(self, kind, arg):
+        if kind == "switch":
+            got = self.switch_to(arg)
+            if got:
+                return True, f"Switched to {arg.title()}"
+            # Nothing open by that name — open it instead.
+            kind = "open_app"
+
         if kind == "open_app":
-            # Verify the app is installed first: if so, open the app; if not,
-            # open it on the web. Download only happens on an explicit
-            # "download X" command.
+            # Verify the app is installed first: if so, focus it when it is
+            # already running, otherwise open the app. If not installed,
+            # open it on the web (focusing an existing tab if there is one).
             found = self.find_app(arg)
             if found:
                 target, label = found
+                # Already running? Jump to it instead of a duplicate. Match
+                # by the app itself, not a browser tab that mentions the name.
+                got = self.switch_to(arg, allow_browser=False)
+                if got:
+                    return True, f"Switched to {label.title()}"
                 self._launch(target)
                 return True, f"Opening {label.title()}"
+            got = self.switch_to(arg)  # site/tab already open?
+            if got:
+                return True, f"Switched to {arg.title()}"
             return self._open_web(arg, installed=False)
 
         if kind == "open_web":
