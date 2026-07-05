@@ -263,6 +263,18 @@ class OpenBehaviourTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("spotify.com/download", self.opened[0])
 
+    def test_known_site_opens_directly_not_searched(self):
+        ok, msg = self.e.run("open reddit")
+        self.assertIn("reddit.com", self.opened[0])
+        self.assertNotIn("google.com/search", self.opened[0])
+
+
+class HotwordTests(unittest.TestCase):
+    def test_default_hotwords_include_common_names(self):
+        import transcriber
+        for name in ("Claude", "GitHub", "OBS", "Spotify", "YouTube"):
+            self.assertIn(name, transcriber.DEFAULT_HOTWORDS)
+
 
 class StoreAppAndReinforcementTests(unittest.TestCase):
     def setUp(self):
