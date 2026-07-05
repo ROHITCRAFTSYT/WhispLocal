@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.6.0 — 2026-07-05
+
+### Added
+- Music commands: "play some music", "play <song>", "play <song> on
+  spotify/youtube". Bare "play"/"pause" still work as media keys.
+- Self-correcting commands: a misheard command gets a second pass that
+  fixes the leading verb ("oben" -> "open") or matches the whole phrase
+  to the closest known command before giving up.
+- Command recognition is biased toward command verbs and your own app
+  names, so commands transcribe more reliably.
+- Habit learning: WhispLocal records which apps you open, what you look
+  up, and which commands you use (locally, in adaptive.json). Your app
+  names feed back into the recognizer over time.
+- "What do you know about me" / "update my profile" writes a formatted
+  Profile.md to your Obsidian vault, and it refreshes automatically every
+  20 commands. Sandboxed to the vault like notes.
+
+### Fixed
+- "Play music" and similar no longer report "did not understand".
+
 ## 2.5.0 — 2026-07-05
 
 ### Changed

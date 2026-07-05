@@ -37,7 +37,7 @@ class ParseTests(unittest.TestCase):
 
     def test_youtube(self):
         self.assertEqual(kind_arg("play lo-fi beats on youtube"),
-                         ("youtube", "lo-fi beats"))
+                         ("play_music", ("lo-fi beats", "youtube")))
 
     def test_type_preserves_casing(self):
         self.assertEqual(kind_arg("Type Hello World"), ("type", "Hello World"))
@@ -123,6 +123,47 @@ class ParseTests(unittest.TestCase):
 
     def test_plain_open_is_open_app(self):
         self.assertEqual(kind_arg("open notepad"), ("open_app", "notepad"))
+
+    def test_play_music_variants(self):
+        self.assertEqual(kind_arg("play some music"), ("play_music", ("", None)))
+        self.assertEqual(kind_arg("play music"), ("play_music", ("", None)))
+        self.assertEqual(kind_arg("play bohemian rhapsody"),
+                         ("play_music", ("bohemian rhapsody", None)))
+        self.assertEqual(kind_arg("play lo-fi beats on spotify"),
+                         ("play_music", ("lo-fi beats", "spotify")))
+
+    def test_bare_play_is_media_key(self):
+        self.assertEqual(kind_arg("play"), ("shortcut", "play"))
+        self.assertEqual(kind_arg("pause"), ("shortcut", "pause"))
+
+    def test_profile_command(self):
+        self.assertEqual(kind_arg("what do you know about me"),
+                         ("profile", None))
+        self.assertEqual(kind_arg("update my profile"), ("profile", None))
+
+
+class RepairTests(unittest.TestCase):
+    def setUp(self):
+        self.e = CommandEngine(build_index=False)
+
+    def test_repairs_misheard_verb(self):
+        # "oben" -> "open"
+        self.assertEqual(self.e._repair("oben chrome"), "open chrome")
+
+    def test_repairs_close_verb(self):
+        self.assertEqual(self.e._repair("cloze notepad"), "close notepad")
+
+    def test_repairs_known_phrase(self):
+        self.assertEqual(self.e._repair("take a screenshoot"),
+                         "take a screenshot")
+
+    def test_leaves_good_commands_alone(self):
+        self.assertIsNone(self.e._repair("open notepad"))
+
+    def test_run_uses_repair(self):
+        # A misheard verb should still route to the right intent.
+        cmd = parse(self.e._repair("oben spotify"))
+        self.assertEqual(cmd[0], "open_app")
 
     def test_ordinary_speech_is_not_a_command(self):
         self.assertIsNone(parse("the meeting went well today"))

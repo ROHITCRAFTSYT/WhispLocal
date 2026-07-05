@@ -66,6 +66,27 @@ class AdaptiveTests(unittest.TestCase):
         self.assertIsNone(a.hotwords())
         self.assertIsNone(a.preferred_language())
 
+    def test_records_commands_and_builds_profile(self):
+        self.a.record_command("open_app", label="discord")
+        self.a.record_command("open_app", label="discord")
+        self.a.record_command("search", topic="python asyncio tutorial")
+        prof = self.a.profile_summary()
+        self.assertEqual(prof["commands_total"], 3)
+        self.assertEqual(prof["top_apps"][0], ("discord", 2))
+        self.assertIn("open_app", dict(prof["top_actions"]))
+        self.assertTrue(any("python" in t for t, _ in prof["top_topics"]))
+
+    def test_command_learning_persists(self):
+        self.a.record_command("open_app", label="obsidian")
+        reloaded = Adaptive(self.dir)
+        self.assertEqual(reloaded.command_total, 1)
+        self.assertEqual(reloaded.app_counts["obsidian"], 1)
+
+    def test_app_names_become_hotwords(self):
+        for _ in range(3):
+            self.a.record_command("open_app", label="discord")
+        self.assertIn("discord", self.a.hotwords())
+
 
 if __name__ == "__main__":
     unittest.main()

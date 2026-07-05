@@ -58,6 +58,30 @@ class ObsidianTests(unittest.TestCase):
         real = os.path.realpath(self._today_file())
         self.assertTrue(real.startswith(os.path.realpath(self.vault)))
 
+    def test_save_profile_writes_formatted_file(self):
+        summary = {
+            "commands_total": 12,
+            "dictations_by_language": {"en": 8, "hi": 4},
+            "top_apps": [("discord", 5), ("obs studio", 3)],
+            "top_actions": [("open_app", 8), ("search", 4)],
+            "top_topics": [("python", 3)],
+            "corrections": {"clod": "Claude"},
+            "vocabulary_size": 42,
+        }
+        ok, msg = obsidian.save_profile(self.vault, summary)
+        self.assertTrue(ok, msg)
+        path = os.path.join(self.vault, obsidian.SUBFOLDER, "Profile.md")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("What WhispLocal has learned about me", content)
+        self.assertIn("discord", content)
+        self.assertIn("Claude", content)
+        self.assertIn("en (8)", content)
+
+    def test_save_profile_rejects_missing_vault(self):
+        ok, _ = obsidian.save_profile(r"C:\nope_xyz", {"commands_total": 0})
+        self.assertFalse(ok)
+
 
 if __name__ == "__main__":
     unittest.main()

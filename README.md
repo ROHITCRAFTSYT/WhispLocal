@@ -134,7 +134,9 @@ anything installed. What you can say:
 | "open downloads", "open documents" | Opens the folder |
 | "open youtube.com", "go to github" | Opens the site |
 | "search for python tutorials", "look up the capital of Japan" | Web search |
-| "play lo-fi beats on youtube" | YouTube search |
+| "play some music" | Opens YouTube Music |
+| "play despacito", "play X on spotify" | Plays the song on YouTube Music or Spotify |
+| "what do you know about me" | Writes a profile of what it has learned to Obsidian |
 | "find market data for Tesla", "stock price of Apple" | Opens the market/stock page |
 | "book a table at Bukhara" | Opens reservation options (you confirm it) |
 | "take a note buy milk tomorrow" | Saves a formatted note to your Obsidian vault |
@@ -147,6 +149,12 @@ anything installed. What you can say:
 | "lock the screen" | Locks Windows |
 | "shut down the computer" | Shutdown after 60 s; "cancel shutdown" aborts |
 | "what time is it", "what's the date" | Answers on screen and out loud |
+
+If a command is slightly misheard, WhispLocal makes a second pass: it
+corrects the leading verb ("oben chrome" becomes "open chrome") or
+matches the whole phrase to the closest known command before giving up.
+It also feeds your command words and app names into the recognizer, so
+the more you use it, the better it hears you.
 
 It stays out of your way on purpose. It will not delete files, and it
 will not make purchases, payments, or bookings on your behalf: booking
@@ -200,9 +208,15 @@ get more accurate the more you dictate:
   detection is unreliable on short clips, so when detection is unsure,
   WhispLocal retries with your usual language.
 
+In voice control mode it also learns your habits: which apps you open,
+what you look up, and which commands you use. Say "what do you know about
+me" and it writes a profile to your Obsidian vault (`WhispLocal/
+Profile.md`), refreshed automatically as you go. Your most-used app names
+are fed back into the recognizer so they transcribe better over time.
+
 This is a personalization layer on top of the recognizer, not neural
 network training, which no laptop CPU could do. In practice it is the
-part of accuracy you can actually feel: your own words, in your own
+part of accuracy you can actually feel: your own words, apps, and
 languages. It stays on your disk, can be turned off in Settings, and
 deleting `adaptive.json` resets it.
 

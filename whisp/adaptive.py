@@ -61,6 +61,10 @@ class Adaptive:
         self.word_counts = Counter()
         self.lang_counts = Counter()
         self.learned_dictionary = {}
+        self.action_counts = Counter()   # kind of command -> count
+        self.app_counts = Counter()      # app opened/closed -> count
+        self.topic_counts = Counter()    # search/lookup topics -> count
+        self.command_total = 0
         self._load()
 
     # ----- persistence -----------------------------------------------------
@@ -71,6 +75,10 @@ class Adaptive:
             self.word_counts = Counter(data.get("word_counts", {}))
             self.lang_counts = Counter(data.get("lang_counts", {}))
             self.learned_dictionary = data.get("learned_dictionary", {})
+            self.action_counts = Counter(data.get("action_counts", {}))
+            self.app_counts = Counter(data.get("app_counts", {}))
+            self.topic_counts = Counter(data.get("topic_counts", {}))
+            self.command_total = int(data.get("command_total", 0))
         except (OSError, json.JSONDecodeError, ValueError):
             pass
 
@@ -79,6 +87,10 @@ class Adaptive:
             "word_counts": dict(self.word_counts),
             "lang_counts": dict(self.lang_counts),
             "learned_dictionary": self.learned_dictionary,
+            "action_counts": dict(self.action_counts),
+            "app_counts": dict(self.app_counts),
+            "topic_counts": dict(self.topic_counts),
+            "command_total": self.command_total,
         }
         tmp = self.path + ".tmp"
         try:
@@ -131,6 +143,38 @@ class Adaptive:
             if learned:
                 self._save()
         return learned
+
+    def record_command(self, kind, label=None, topic=None):
+        """Called after each executed voice command, to learn habits."""
+        if not self.enabled:
+            return
+        with self._lock:
+            self.command_total += 1
+            self.action_counts[kind] += 1
+            if label:
+                self.app_counts[label.lower()] += 1
+                # Learn app names as hotwords so they transcribe better later.
+                for word in _tokenize(label):
+                    self.word_counts[word.lower()] += 1
+            if topic:
+                for word in _tokenize(topic):
+                    lw = word.lower()
+                    if lw not in STOPWORDS:
+                        self.topic_counts[lw] += 1
+            self._save()
+
+    def profile_summary(self):
+        """A small dict describing what has been learned about the user."""
+        with self._lock:
+            return {
+                "commands_total": self.command_total,
+                "dictations_by_language": dict(self.lang_counts.most_common()),
+                "top_apps": self.app_counts.most_common(10),
+                "top_actions": self.action_counts.most_common(10),
+                "top_topics": self.topic_counts.most_common(12),
+                "corrections": dict(self.learned_dictionary),
+                "vocabulary_size": len(self.word_counts),
+            }
 
     # ----- recall -------------------------------------------------------------
     def hotwords(self):

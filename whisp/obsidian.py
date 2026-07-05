@@ -64,3 +64,48 @@ def save_note(vault, text, kind="note"):
         return True, "Saved to today's note in Obsidian"
     except OSError as e:
         return False, f"Could not write the note: {e}"
+
+
+def save_profile(vault, summary):
+    """Overwrite a Profile.md in the vault with what has been learned.
+    Returns (ok, feedback)."""
+    if not is_valid_vault(vault):
+        return False, ("Obsidian vault path is not set or does not exist. "
+                       "Fix it in Settings")
+    folder = os.path.join(vault, SUBFOLDER)
+    path = os.path.join(folder, "Profile.md")
+    if not _within(vault, path):
+        return False, "Refusing to write outside the vault"
+
+    def _rows(pairs):
+        return "\n".join(f"- {k} — {v}" for k, v in pairs) or "- (nothing yet)"
+
+    day = time.strftime("%Y-%m-%d %H:%M")
+    langs = summary.get("dictations_by_language") or {}
+    lang_line = ", ".join(f"{k} ({v})" for k, v in langs.items()) or "none yet"
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(
+                "---\n"
+                "source: WhispLocal\n"
+                "tags: [whisplocal, profile]\n"
+                f"updated: {day}\n"
+                "---\n\n"
+                "# What WhispLocal has learned about me\n\n"
+                f"_Updated {day}. This file is maintained locally by "
+                "WhispLocal from how you use it._\n\n"
+                f"**Voice commands run:** {summary.get('commands_total', 0)}  \n"
+                f"**Dictation languages:** {lang_line}  \n"
+                f"**Vocabulary learned:** {summary.get('vocabulary_size', 0)} words\n\n"
+                "## Apps I open most\n"
+                f"{_rows(summary.get('top_apps', []))}\n\n"
+                "## Things I look up most\n"
+                f"{_rows(summary.get('top_topics', []))}\n\n"
+                "## What I do most\n"
+                f"{_rows(summary.get('top_actions', []))}\n\n"
+                "## Corrections you taught me\n"
+                f"{_rows(list((summary.get('corrections') or {}).items()))}\n")
+        return True, "Updated your profile in Obsidian"
+    except OSError as e:
+        return False, f"Could not write the profile: {e}"

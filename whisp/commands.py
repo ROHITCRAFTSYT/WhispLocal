@@ -182,9 +182,19 @@ def parse(text):
     if m:
         return ("search", m.group(1).strip(), None)
 
-    m = re.match(r"play\s+(.+?)\s+on youtube", t)
+    # Music: "play X on spotify/youtube", "play some music", "play <song>".
+    # (Bare "play"/"pause" stay media keys via SHORTCUTS below.)
+    m = re.match(r"(?:play|put on|start playing)\s+(.+?)\s+on\s+"
+                 r"(youtube music|youtube|spotify)$", t)
     if m:
-        return ("youtube", m.group(1).strip(), None)
+        return ("play_music", (m.group(1).strip(), m.group(2)), None)
+    m = re.match(r"(?:play|put on|start playing)\s+(?:some\s+|a\s+|the\s+)?"
+                 r"(?:music|songs?|playlist|tunes)\b.*", t)
+    if m:
+        return ("play_music", ("", None), None)
+    m = re.match(r"(?:play|put on|start playing)\s+(.+)", t)
+    if m:
+        return ("play_music", (m.group(1).strip(), None), None)
 
     m = re.match(r"type\s+(.+)", text.strip(), re.I)  # keep original casing
     if m:
@@ -224,6 +234,11 @@ def parse(text):
         return ("shutdown", None, None)
     if re.match(r"cancel (?:the\s+)?shut\s?down", t):
         return ("cancel_shutdown", None, None)
+    if re.match(r"(?:what do you know about me|update my profile|"
+                r"save my profile|show my profile|"
+                r"what have you learned about me)", t):
+        return ("profile", None, None)
+
     if re.match(r"what(?:'s| is) the time|what time is it", t):
         return ("time", None, None)
     if re.match(r"what(?:'s| is) (?:the date|today's date)|what day is it", t):
@@ -258,13 +273,46 @@ def parse(text):
 
 # ----- execution -------------------------------------------------------------
 
+# Command verbs, used to repair a slightly misheard first word.
+_VERBS = ("open", "launch", "start", "run", "close", "quit", "exit",
+          "play", "pause", "search", "google", "type", "press", "hit",
+          "volume", "scroll", "click", "download", "install", "note",
+          "lock", "screenshot", "mute", "copy", "paste", "save",
+          "minimize", "maximize", "refresh")
+
+
 class CommandEngine:
-    def __init__(self, build_index=True, note_saver=None):
+    def __init__(self, build_index=True, note_saver=None, on_action=None,
+                 profile_saver=None):
         self.app_index = {}
         # note_saver(text) -> (ok, feedback); wired by the app to Obsidian.
         self.note_saver = note_saver
+        # profile_saver() -> (ok, feedback); writes the learned profile.
+        self.profile_saver = profile_saver
+        # on_action(kind, arg, ok) -> None; wired by the app to learning.
+        self.on_action = on_action
         if build_index:
             threading.Thread(target=self._build_index, daemon=True).start()
+
+    def _repair(self, text):
+        """Try to fix a command that did not parse: correct a misheard
+        leading verb, or fuzzy-match the whole phrase to a known command.
+        Returns a repaired string or None."""
+        t = _normalize(text)
+        if not t:
+            return None
+        words = t.split()
+        near = difflib.get_close_matches(words[0], _VERBS, n=1, cutoff=0.72)
+        if near and near[0] != words[0]:
+            words[0] = near[0]
+            return " ".join(words)
+        known = (list(SHORTCUTS.keys())
+                 + ["take a screenshot", "lock the screen", "what time is it",
+                    "what's the date", "play music", "show desktop"])
+        near = difflib.get_close_matches(t, known, n=1, cutoff=0.82)
+        if near:
+            return near[0]
+        return None
 
     def _build_index(self):
         roots = [
@@ -396,22 +444,39 @@ class CommandEngine:
         if not matches:
             return False, f'No open window for "{name}" found'
         WM_CLOSE = 0x0010
-        for hwnd, _title in matches:
+        hwnds = [h for h, _ in matches]
+        for hwnd in hwnds:
             ctypes.windll.user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         label = name.title()
-        return True, (f"Closing {label}" if len(matches) == 1
-                      else f"Closing {len(matches)} {label} windows")
+        # Verify it actually closed (it may be prompting to save).
+        time.sleep(0.6)
+        still = {h for h, _t, _e in _enum_windows()} & set(hwnds)
+        if not still:
+            return True, (f"Closed {label}" if len(hwnds) == 1
+                          else f"Closed {len(hwnds)} {label} windows")
+        return True, f"Asked {label} to close (it may be waiting for you)"
 
     def run(self, text):
         """Parse and execute. Returns (ok, feedback)."""
         cmd = parse(text)
         if cmd is None:
+            # Second pass: repair a misheard command before giving up.
+            repaired = self._repair(text)
+            if repaired:
+                cmd = parse(repaired)
+        if cmd is None:
             return False, f'Did not understand: "{text.strip()}"'
         kind, arg, _ = cmd
         try:
-            return self._execute(kind, arg)
+            ok, feedback = self._execute(kind, arg)
         except Exception as e:
-            return False, f"Failed: {e}"
+            ok, feedback = False, f"Failed: {e}"
+        if self.on_action:
+            try:
+                self.on_action(kind, arg, ok)
+            except Exception:
+                pass
+        return ok, feedback
 
     def _execute(self, kind, arg):
         if kind == "open_app":
@@ -439,6 +504,11 @@ class CommandEngine:
                 return False, ("No Obsidian vault is set. Add one in "
                                "Settings to save notes")
             return self.note_saver(arg)
+
+        if kind == "profile":
+            if self.profile_saver is None:
+                return False, "Learning is not available right now"
+            return self.profile_saver()
 
         if kind == "booking":
             webbrowser.open(RESERVATION_SEARCH
@@ -471,6 +541,24 @@ class CommandEngine:
             webbrowser.open(
                 "https://www.youtube.com/results?search_query=" + _quote(arg))
             return True, f"Searching YouTube for {arg}"
+
+        if kind == "play_music":
+            query, service = arg
+            if not query:
+                webbrowser.open("https://music.youtube.com/")
+                return True, "Opening music"
+            if service == "spotify":
+                webbrowser.open(
+                    "https://open.spotify.com/search/" + _quote(query))
+                return True, f"Playing {query} on Spotify"
+            if service == "youtube":
+                webbrowser.open(
+                    "https://www.youtube.com/results?search_query="
+                    + _quote(query))
+                return True, f"Playing {query} on YouTube"
+            webbrowser.open(
+                "https://music.youtube.com/search?q=" + _quote(query))
+            return True, f"Playing {query}"
 
         if kind == "folder":
             os.startfile(os.path.join(os.path.expanduser("~"), arg))

@@ -30,7 +30,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.5.0"
+__version__ = "2.6.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -80,7 +80,10 @@ class App:
         self.transcriber = Transcriber(self.config)
         self.adaptive = Adaptive(
             APP_DIR, enabled=self.config.get("adaptive_learning", True))
-        self.commands = CommandEngine(note_saver=self._save_note)
+        self.commands = CommandEngine(
+            note_saver=self._save_note,
+            profile_saver=self._save_profile,
+            on_action=self._on_command)
         self.overlay = Overlay(
             get_levels=lambda: list(self.recorder.levels),
             position=self.config.get("overlay_position", "bottom-center"))
@@ -136,6 +139,40 @@ class App:
     def _save_note(self, text):
         """Called by the command engine for 'take a note ...' commands."""
         return obsidian.save_note(self.config.get("obsidian_vault", ""), text)
+
+    def _save_profile(self):
+        """Write the learned profile to Obsidian and report a short summary."""
+        summary = self.adaptive.profile_summary()
+        vault = self.config.get("obsidian_vault", "")
+        if vault:
+            obsidian.save_profile(vault, summary)
+        top = summary["top_apps"][0][0] if summary["top_apps"] else None
+        parts = [f"I have handled {summary['commands_total']} commands"]
+        if top:
+            parts.append(f"you open {top} most")
+        if vault:
+            parts.append("I updated your profile in Obsidian")
+        return True, ". ".join(parts)
+
+    def _on_command(self, kind, arg, ok):
+        """Learn from each executed command and refresh the profile note
+        periodically so Obsidian stays current."""
+        if not ok:
+            return
+        label = topic = None
+        if kind in ("open_app", "open_web", "close_app", "download"):
+            label = arg if isinstance(arg, str) else None
+        elif kind in ("search", "lookup", "market", "booking", "youtube"):
+            topic = arg if isinstance(arg, str) else None
+        elif kind == "play_music" and isinstance(arg, tuple):
+            topic = arg[0] or None
+        self.adaptive.record_command(kind, label=label, topic=topic)
+        vault = self.config.get("obsidian_vault", "")
+        if vault and self.adaptive.command_total % 20 == 0:
+            try:
+                obsidian.save_profile(vault, self.adaptive.profile_summary())
+            except Exception:
+                pass
 
     def set_mode(self, mode):
         cfg = dict(self.config)
@@ -307,12 +344,22 @@ class App:
             log(f"pipeline error: {e}\n{traceback.format_exc()}")
             self.overlay.post("error")
 
+    def _command_hotwords(self):
+        """Bias command recognition toward command verbs and the user's own
+        app names, so 'open obs' or 'close discord' transcribe cleanly."""
+        from commands import _VERBS
+        apps = [w for label in self.commands.app_index
+                for w in label.split() if len(w) > 2][:60]
+        extra = self.adaptive.hotwords() or ""
+        return " ".join(list(_VERBS) + apps) + " " + extra
+
     def _process_command(self, audio):
         try:
             # Commands are English phrases; pinning the language makes
             # short utterances like "open chrome" far more reliable.
             text, _lang, _prob = self.transcriber.transcribe(
-                audio, task="transcribe", language="en")
+                audio, task="transcribe", language="en",
+                hotwords=self._command_hotwords())
             if not text:
                 self.overlay.post("hide")
                 return
