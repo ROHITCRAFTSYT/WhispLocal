@@ -369,6 +369,28 @@ class CommandEngine:
 
         self.app_index = index
 
+    def switch_to(self, term):
+        """If a window whose title contains `term` is open, focus it and
+        return its title; otherwise return None. Lets 'open youtube' jump
+        to an already-open YouTube instead of opening a duplicate."""
+        term = (term or "").strip().lower()
+        if len(term) < 2:
+            return None
+        best = None
+        for hwnd, title, exe in _enum_windows():
+            tl = title.lower()
+            if any(p in tl for p in _PROTECTED_CLOSE):
+                continue
+            el = os.path.splitext(exe)[0].lower()
+            if term in tl or term == el:
+                # Prefer the most specific (shortest) matching title.
+                if best is None or len(title) < len(best[1]):
+                    best = (hwnd, title)
+        if best is None:
+            return None
+        _focus_hwnd(best[0])
+        return best[1]
+
     def _launch(self, target):
         """Start an indexed app, handling both file shortcuts and UWP AppIDs."""
         if target.startswith("appid:"):
@@ -728,6 +750,15 @@ def _enum_windows():
 
     user32.EnumWindows(WNDENUMPROC(cb), 0)
     return results
+
+
+def _focus_hwnd(hwnd):
+    """Bring a window to the foreground reliably (SwitchToThisWindow is the
+    same call Alt+Tab uses, so it bypasses the foreground-lock timeout)."""
+    u = ctypes.windll.user32
+    if u.IsIconic(hwnd):
+        u.ShowWindow(hwnd, 9)  # SW_RESTORE
+    u.SwitchToThisWindow(hwnd, True)
 
 
 def speak(text):
