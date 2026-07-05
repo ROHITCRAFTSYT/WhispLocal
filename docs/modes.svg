@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 210" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="880" height="210" rx="10" fill="#0d1117"/>
+  <text x="440" y="34" fill="#e6edf3" font-size="16" font-weight="600" text-anchor="middle">Two modes, one hotkey (or one each)</text>
+
+  <g>
+    <rect x="30" y="56" width="260" height="128" rx="10" fill="#161b22" stroke="#30363d"/>
+    <circle cx="60" cy="88" r="7" fill="#ff5555"/>
+    <text x="80" y="93" fill="#e6edf3" font-size="15" font-weight="600">Dictation</text>
+    <text x="52" y="122" fill="#8b949e" font-size="12.5">Speak and your words are typed</text>
+    <text x="52" y="142" fill="#8b949e" font-size="12.5">at the cursor, cleaned up and</text>
+    <text x="52" y="162" fill="#8b949e" font-size="12.5">punctuated, in any app.</text>
+  </g>
+
+  <g>
+    <rect x="310" y="56" width="260" height="128" rx="10" fill="#161b22" stroke="#50fa7b"/>
+    <circle cx="340" cy="88" r="7" fill="#50fa7b"/>
+    <text x="360" y="93" fill="#e6edf3" font-size="15" font-weight="600">Voice control</text>
+    <text x="332" y="122" fill="#8b949e" font-size="12.5">Open apps, play music, search,</text>
+    <text x="332" y="142" fill="#8b949e" font-size="12.5">control windows, take notes.</text>
+    <text x="332" y="162" fill="#8b949e" font-size="12.5">It acts on what you say.</text>
+  </g>
+
+  <g>
+    <rect x="590" y="56" width="260" height="128" rx="10" fill="#161b22" stroke="#30363d"/>
+    <circle cx="620" cy="88" r="7" fill="#bd93f9"/>
+    <text x="640" y="93" fill="#e6edf3" font-size="15" font-weight="600">Translate</text>
+    <text x="612" y="122" fill="#8b949e" font-size="12.5">Speak any language and the</text>
+    <text x="612" y="142" fill="#8b949e" font-size="12.5">English translation is typed</text>
+    <text x="612" y="162" fill="#8b949e" font-size="12.5">for you.</text>
+  </g>
+</svg>

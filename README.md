@@ -7,97 +7,69 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
   <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey" alt="Windows 10/11">
+  <img src="https://img.shields.io/badge/offline-100%25-2ea043" alt="Offline">
 </p>
 
-WhispLocal is a dictation app for Windows that runs entirely on your own
-computer. Hold a key, say what you want to type, release, and the text
-appears at your cursor in whatever app you were using. There is no cloud
-service behind it: the speech recognition model runs on your CPU, so
-nothing you say ever leaves the machine.
+WhispLocal is a voice tool for Windows that runs entirely on your own
+computer. Hold a key and talk: in dictation mode your words are typed at
+the cursor, and in voice control mode it opens apps, plays music,
+searches, and takes notes. There is no cloud service behind it. Speech
+recognition runs on your CPU, so nothing you say or do is uploaded.
 
 <p align="center">
-  <img src="docs/waveform.gif" alt="Recording indicator with live waveform" width="340">
+  <img src="docs/waveform.gif" alt="Recording indicator with a live waveform" width="360">
 </p>
 
-## How it works
+## Two modes
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Pipeline: hotkey, microphone, faster-whisper, cleanup, active window" width="820">
+  <img src="docs/modes.svg" alt="Dictation, voice control, and translate modes" width="860">
 </p>
 
-Audio is captured at 16 kHz while you hold the hotkey, then transcribed
-by [faster-whisper](https://github.com/SYSTRAN/faster-whisper), a
-CTranslate2 port of OpenAI's Whisper quantized to int8 so it performs
-well on CPUs without a GPU. A cleanup pass strips filler words (um, uh),
-fixes capitalization, and applies your personal dictionary of
-corrections, for example `jason => JSON`. The result is pasted at the
-cursor, and your previous clipboard contents are restored afterwards.
+Switch modes from the tray, or give each one its own hotkey and use them
+side by side. Dictation is the default; voice control turns the same key
+into a command trigger.
 
-## What it does
+## What it can do
 
-- Types into anything that accepts text: browsers, editors, chat apps, terminals.
-- Hold to talk, or tap the key once to lock recording on for longer dictation.
-- Shows a live waveform while recording, so you know it is listening.
-- An optional second hotkey transcribes speech in other languages directly to English text.
-- Six recognition models, switchable from the tray without restarting.
-- Runs from the system tray with no console window. Starting it twice will not launch a second copy.
-- Sound cues, a pause switch, and a dictation history you can search and copy from.
+- Type into any app: browsers, editors, chat, terminals.
+- Hold to talk, or tap once to lock recording on for longer stretches.
+- A live waveform shows your real mic level while recording.
+- Clean up as you go: filler words removed, sentences capitalized, plus
+  a personal dictionary of corrections.
+- Speak other languages, or translate them to English on a second hotkey.
+- Voice control: open apps (including Microsoft Store apps), play music,
+  web and YouTube search, close and manage windows, type and press keys,
+  volume and media control, screenshots, lock screen, take notes.
+- Learns your vocabulary, languages, and habits over time, all locally.
+- Runs from the tray with a silent launch. No console window, ever.
 
-Settings and history are regular windows, not config files you have to edit:
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/settings.png" alt="Settings window" width="420"></td>
-    <td align="center"><img src="docs/history.png" alt="History window" width="420"></td>
-  </tr>
-  <tr>
-    <td align="center">Settings</td>
-    <td align="center">History</td>
-  </tr>
-</table>
-
-## Performance
-
-<p align="center">
-  <img src="docs/benchmark.svg" alt="Benchmark: tiny 1.5s, base.en 1.9s, base 2.9s for a 14 second dictation" width="820">
-</p>
-
-These numbers come from a two-core laptop CPU (Intel i3-1005G1) with no
-GPU, so they are close to a worst case. On newer hardware the wait is
-shorter. The model stays loaded in RAM between dictations; only the
-first dictation after startup pays a loading cost of a couple of
-seconds.
-
-## Install
+## Dictation
 
 ```
-git clone https://github.com/ROHITCRAFTSYT/WhispLocal.git
-cd WhispLocal
-setup.bat
-install_shortcuts.bat
+hotkey → mic capture (16 kHz) → faster-whisper (int8, CPU) → cleanup
+(fillers, dictionary, punctuation) → text at the cursor in any app
 ```
 
-You need Windows 10 or 11 and [Python 3.11+](https://www.python.org/downloads/).
-`setup.bat` creates a virtual environment, installs dependencies, and
-downloads the default model (about 75 MB). `install_shortcuts.bat` adds
-WhispLocal to your Desktop and Start Menu. After that, launch it from
-the Start Menu and look for the microphone icon in the tray.
+<p align="center">
+  <img src="docs/architecture.svg" alt="Dictation pipeline" width="860">
+</p>
 
-To start it automatically at login, press `Win+R`, type `shell:startup`,
-and copy the WhispLocal shortcut into that folder.
+Audio is transcribed by [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
+a CTranslate2 build of Whisper quantized to int8 so it runs well on CPUs
+without a GPU. A cleanup pass fixes spacing and capitalization and
+applies your dictionary (for example `jason => JSON`), then the text is
+pasted at the cursor and your previous clipboard is restored.
 
-## Everyday use
+### Speed
 
-| Action | Result |
-|---|---|
-| Hold `Right Ctrl`, speak, release | Text is typed at your cursor |
-| Tap `Right Ctrl` once | Recording locks on; tap again to stop |
-| Translate hotkey (set one in Settings) | Speech in any language becomes English text |
-| Tray menu → Settings | Model, language, microphone, hotkeys, dictionary |
-| Tray menu → History | Past dictations, double-click to copy |
-| Tray menu → Pause dictation | Hotkeys ignored until you unpause |
+<p align="center">
+  <img src="docs/benchmark.svg" alt="Benchmark: tiny 1.5s, base.en 1.9s, base 2.9s for a 14 second dictation" width="860">
+</p>
 
-## Choosing a model
+Measured on a two-core laptop CPU (Intel i3-1005G1) with no GPU, so this
+is close to a worst case. The model stays in RAM between dictations, so
+only the first one after startup waits for it to load.
 
 | Model | 14 s dictation takes | Notes |
 |---|---|---|
@@ -105,25 +77,36 @@ and copy the WhispLocal shortcut into that folder.
 | `base` / `base.en` | 1.9 to 2.9 s | Default, good balance |
 | `small` / `small.en` | about 7 s (estimated) | Most accurate |
 
-The `.en` variants are faster and more accurate but only understand
-English. Translate mode needs a multilingual model (one without the
-`.en` suffix). Picking a model you have not used before downloads it
-once, which is the only situation where the app needs a network
-connection.
+The `.en` variants are English only. Translate mode needs a multilingual
+model (no `.en` suffix). Picking a model you have not used before
+downloads it once, the only time the app touches the network.
 
-## Voice control mode
+### Other languages
 
-WhispLocal has two modes. Dictation is the default. Switch to voice
-control from the tray (Mode menu) and the same hotkey stops typing what
-you say and starts doing what you say. If you want both at once, give
-voice control its own hotkey in Settings and keep dictating on the main
-one. Confirmations are spoken back through the built-in Windows voice;
-turn that off in Settings if it gets chatty.
+Pick your language from the tray or Settings rather than relying on
+auto-detection; it is faster and more reliable for short clips. For
+Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, and Punjabi,
+WhispLocal prompts the model in the native script, so you get देवनागरी
+rather than a Latin transliteration.
 
-Commands are matched locally against a fixed set of patterns. Apps are
-found by indexing both your Start Menu shortcuts and your installed
-Microsoft Store apps, so "open Spotify" opens the Spotify app whether it
-came from the Store or a normal installer. What you can say:
+## Voice control
+
+Switch to voice control from the tray (Mode menu), or set a separate
+hotkey in Settings and keep dictating on the main one. Confirmations are
+spoken back through the built-in Windows voice.
+
+<p align="center">
+  <img src="docs/command-states.png" alt="Voice control indicator states" width="420">
+</p>
+
+Commands are matched locally. Apps are found by indexing both your Start
+Menu shortcuts and your installed Microsoft Store apps, so "open Spotify"
+opens the Spotify app whether it came from the Store or a normal
+installer.
+
+<p align="center">
+  <img src="docs/command-flow.svg" alt="Open command decision flow" width="860">
+</p>
 
 | Say | Happens |
 |---|---|
@@ -132,15 +115,13 @@ came from the Store or a normal installer. What you can say:
 | "open spotify in web" | Forces the web version even if the app is installed |
 | "download spotify" | Opens its official download page |
 | "close chrome", "quit spotify" | Closes the app gracefully (save prompts still appear) |
-| "open downloads", "open documents" | Opens the folder |
-| "open youtube.com", "go to github" | Opens the site |
-| "search for python tutorials", "look up the capital of Japan" | Web search |
 | "play some music" | Opens YouTube Music |
 | "play despacito", "play X on spotify" | Plays the song on YouTube Music or Spotify |
-| "what do you know about me" | Writes a profile of what it has learned to Obsidian |
-| "find market data for Tesla", "stock price of Apple" | Opens the market/stock page |
+| "search for python tutorials", "look up the capital of Japan" | Web search |
+| "find market data for Tesla", "stock price of Apple" | Opens the market page |
 | "book a table at Bukhara" | Opens reservation options (you confirm it) |
 | "take a note buy milk tomorrow" | Saves a formatted note to your Obsidian vault |
+| "what do you know about me" | Writes a profile of what it has learned to Obsidian |
 | "type hello there" | Types the text at the cursor |
 | "press control shift s", "press enter" | Sends the key combination |
 | "volume up", "mute", "next song", "pause" | Audio and media control |
@@ -154,24 +135,41 @@ came from the Store or a normal installer. What you can say:
 If a command is slightly misheard, WhispLocal makes a second pass: it
 corrects the leading verb ("oben chrome" becomes "open chrome") or
 matches the whole phrase to the closest known command before giving up.
-It also feeds your command words and app names into the recognizer, so
-the more you use it, the better it hears you.
+Your command words and app names are fed into the recognizer, so it
+hears you better the more you use it.
 
 It stays out of your way on purpose. It will not delete files, and it
-will not make purchases, payments, or bookings on your behalf: booking
-and market commands open the right page so you finish the action
-yourself. Closing an app is a graceful request, so unsaved work still
-prompts you to save. See [GUARDRAILS.md](GUARDRAILS.md) for the full
-list of what it will and will not do. Command recognition is
-English-only for now.
+will not make purchases, payments, or bookings for you: booking and
+market commands open the right page so you finish the action yourself.
+Closing an app is a graceful request, so unsaved work still prompts you.
+See [GUARDRAILS.md](GUARDRAILS.md) for the full list.
+
+## It learns, locally
+
+WhispLocal keeps a small profile in `adaptive.json` and gets more
+accurate the more you use it:
+
+- Words and app names you use often become recognition hints, so names
+  and jargon a generic model would fumble start coming out right.
+- Teach it a correction from the History window and it applies that fix
+  automatically from then on.
+- It notices which languages you dictate in and, when detection is
+  unsure, retries with your usual one.
+- When a spoken name matches more than one app, the one you open most
+  wins.
+
+Say "what do you know about me" and it writes a `Profile.md` to your
+Obsidian vault, refreshed automatically as you go. This is a
+personalization layer on top of the recognizer, not neural-network
+training (which no laptop CPU could do). It stays on your disk, can be
+turned off in Settings, and deleting `adaptive.json` resets it.
 
 ## Notes go to Obsidian
 
 Point WhispLocal at your [Obsidian](https://obsidian.md) vault in
-Settings (Obsidian vault, Browse) and you can say "take a note ..." in
-voice control mode. Notes are appended to a dated file in a `WhispLocal`
-folder inside your vault, with YAML frontmatter and timestamped bullets,
-so they are tidy and easy to find:
+Settings and say "take a note ..." in voice control mode. Notes are
+appended to a dated file in a `WhispLocal` folder in your vault, with
+frontmatter and timestamped bullets:
 
 ```markdown
 ---
@@ -188,69 +186,62 @@ tags: [whisplocal, voice-note]
 
 The writer only ever touches files inside the vault folder you chose.
 
-## Where the bar sits
+## Settings and history
 
-By default the recording bar sits at the bottom-center of the screen. If
-it gets in the way, Settings has an "On-screen bar position" option with
-seven placements (each corner, each edge center, or screen center).
+Everything is a normal window, not a config file to edit by hand.
 
-## It learns how you talk
+<table>
+  <tr>
+    <td align="center"><img src="docs/settings.png" alt="Settings window" width="430"></td>
+    <td align="center"><img src="docs/history.png" alt="History window" width="430"></td>
+  </tr>
+  <tr>
+    <td align="center">Settings</td>
+    <td align="center">History (double-click to copy, Correct to teach)</td>
+  </tr>
+</table>
 
-WhispLocal keeps a small local profile (`adaptive.json`) and uses it to
-get more accurate the more you dictate:
+The recording bar defaults to the bottom-center of the screen; Settings
+has a position option with seven placements if it gets in the way.
 
-- Words you use often become recognition hints. Names, project terms,
-  and jargon that a generic model would fumble start coming out right
-  because the recognizer is told to expect them.
-- When a transcription comes out wrong, open History, select it, and
-  press Correct. The app diffs your fix against what it heard and
-  applies that correction automatically from then on.
-- It notices which languages you actually dictate in. Automatic language
-  detection is unreliable on short clips, so when detection is unsure,
-  WhispLocal retries with your usual language.
+## Why local
 
-In voice control mode it also learns your habits: which apps you open,
-what you look up, and which commands you use. Say "what do you know about
-me" and it writes a profile to your Obsidian vault (`WhispLocal/
-Profile.md`), refreshed automatically as you go. Your most-used app names
-are fed back into the recognizer so they transcribe better over time.
+<p align="center">
+  <img src="docs/comparison.svg" alt="WhispLocal versus cloud dictation" width="860">
+</p>
 
-This is a personalization layer on top of the recognizer, not neural
-network training, which no laptop CPU could do. In practice it is the
-part of accuracy you can actually feel: your own words, apps, and
-languages. It stays on your disk, can be turned off in Settings, and
-deleting `adaptive.json` resets it.
+## Install
 
-## Dictating in other languages
+```
+git clone https://github.com/ROHITCRAFTSYT/WhispLocal.git
+cd WhispLocal
+setup.bat
+install_shortcuts.bat
+```
 
-Pick your language from the tray (Language menu) or Settings instead of
-relying on auto-detection; it is faster and much more reliable for short
-dictations. For Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu,
-and Punjabi, WhispLocal prompts the model in the native script, so you
-get देवनागरी rather than a Latin transliteration. The multilingual
-models (`tiny`, `base`, `small`, no `.en` suffix) handle non-English
-speech, and `small` is noticeably better than `base` for Hindi if you
-can accept the extra couple of seconds.
+You need Windows 10 or 11 and [Python 3.11+](https://www.python.org/downloads/).
+`setup.bat` creates a virtual environment, installs dependencies, and
+downloads the default model (about 75 MB). `install_shortcuts.bat` adds
+WhispLocal to your Desktop and Start Menu. Launch it from the Start Menu
+and look for the microphone icon in the tray. Launching it twice is safe;
+the second copy just tells you it is already running.
+
+To start it at login, press `Win+R`, type `shell:startup`, and copy the
+WhispLocal shortcut into that folder.
 
 ## Privacy
 
-- Transcription happens on your CPU. The app has no telemetry, no
-  account system, and makes no network requests while running.
-- Models are downloaded from Hugging Face once, when you first select
-  them. Nothing is uploaded.
-- History is stored in plain text in `history.jsonl` next to the app,
-  so the History window can show it. Turn it off in Settings or delete
-  the file whenever you want.
-- The personalization profile in `adaptive.json` contains word
-  frequencies, language counts, and your corrections. Same rules: local
-  only, optional, deletable.
-- The default insert method puts the dictated text on the clipboard
-  briefly and then restores what was there before. If you turn off
-  clipboard restore, the dictated text stays on the clipboard. The
-  `type` insert method avoids the clipboard entirely.
-- Push-to-talk anywhere in the OS requires a keyboard hook. The hook is
-  only used to watch for the hotkeys you configured; keystrokes are not
-  recorded or stored.
+- Transcription happens on your CPU. No telemetry, no account, no network
+  requests while running.
+- Models download from Hugging Face once, when you first select them.
+  Nothing is uploaded.
+- History (`history.jsonl`), the learning profile (`adaptive.json`), and
+  Obsidian notes are plain local files. Turn any of them off in Settings
+  or delete the files whenever you want.
+- The default insert method briefly uses the clipboard and restores it.
+  The `type` method avoids the clipboard entirely.
+- See [GUARDRAILS.md](GUARDRAILS.md) for exactly what voice control will
+  and will not do.
 
 ## Development
 
@@ -258,9 +249,10 @@ can accept the extra couple of seconds.
 venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-`debug.bat` runs the app with a console attached so you can watch for
-errors. At runtime, errors go to `whisp.log`, which rotates itself.
-Pull requests are welcome.
+The suite covers text cleanup, the personalization engine, the command
+parser and app matching, and the Obsidian writer. `debug.bat` runs the
+app with a console attached; errors also go to `whisp.log`, which rotates
+itself. Pull requests welcome.
 
 ## Troubleshooting
 
@@ -268,8 +260,11 @@ Pull requests are welcome.
   ignore input from normal processes. Run WhispLocal as administrator too.
 - An app blocks pasting: switch the insert method to `type` in Settings.
 - Wrong microphone: pick the right one in Settings.
-- It will not start: run `debug.bat` and read the error, or check `whisp.log`.
+- A command opens the web when the app is installed: give it a moment
+  after startup to finish indexing your apps, then try again.
+- It will not start: run `debug.bat` and read the error, or check
+  `whisp.log`.
 
 ## License
 
-[MIT](LICENSE), © ROHITCRAFTSYT
+[MIT](LICENSE) © ROHITCRAFTSYT
