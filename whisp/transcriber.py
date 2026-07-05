@@ -6,6 +6,14 @@ transcriptions skip the ~2-5s load cost.
 import os
 import threading
 
+# Proper nouns Whisper commonly mangles (e.g. "Claude" -> "cloud"). These
+# are always offered as recognition hints so names come out right.
+DEFAULT_HOTWORDS = (
+    "Claude Anthropic ChatGPT OpenAI GitHub GitLab WhispLocal Obsidian "
+    "Spotify YouTube OBS Studio Discord Notion Docker Kubernetes Python "
+    "JavaScript TypeScript Chrome Edge Firefox VS Code npm API JSON"
+)
+
 # For languages where Whisper sometimes falls back to the Latin alphabet,
 # a short prompt in the native script steers the output to that script.
 SCRIPT_PRIMERS = {
@@ -56,6 +64,9 @@ class Transcriber:
             lang = language if language is not None else self.language
 
         primer = SCRIPT_PRIMERS.get(lang) if task == "transcribe" else None
+        # Always include the built-in proper-noun hints so names like
+        # "Claude" are not heard as "cloud".
+        effective_hotwords = (DEFAULT_HOTWORDS + " " + (hotwords or "")).strip()
         segments, info = model.transcribe(
             audio,
             task=task,
@@ -64,7 +75,7 @@ class Transcriber:
             # faster-whisper ignores hotwords when initial_prompt is set,
             # so pass whichever applies.
             initial_prompt=primer,
-            hotwords=None if primer else hotwords,
+            hotwords=None if primer else effective_hotwords,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 400},
             condition_on_previous_text=False,
