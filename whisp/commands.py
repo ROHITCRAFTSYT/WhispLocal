@@ -119,6 +119,22 @@ SHORTCUTS = {
 _FILLER_PREFIX = re.compile(
     r"^(?:please|hey|ok|okay|jarvis|can you|could you|would you)\s+", re.I)
 
+# Trailing descriptions people add to a target: "youtube which is already
+# open", "comet that is running", "youtube on chrome". Strip them so the
+# real name ("youtube", "comet") is what gets resolved.
+_TARGET_TAIL = re.compile(
+    r"\s+(?:which|that|thats|it|the one)?\s*"
+    r"(?:is|has|have|was|i)?\s*(?:already|just)?\s*(?:been\s+)?"
+    r"(?:open|opened|opening|running|there)\b.*$"
+    r"|\s+(?:on|in|inside|using|with)\s+(?:the\s+)?"
+    r"(?:chrome|edge|firefox|brave|browser|window|tab)\b.*$",
+    re.I)
+
+
+def _strip_target(target):
+    cleaned = _TARGET_TAIL.sub("", target).strip()
+    return cleaned or target
+
 
 def _normalize(text):
     t = text.strip().lower()
@@ -159,6 +175,10 @@ def parse(text):
     if m:
         return ("download", m.group(1).strip(), None)
 
+    m = re.match(r"(?:switch to|bring up|focus)\s+(?:the\s+)?(.+)", t)
+    if m:
+        return ("switch", _strip_target(m.group(1).strip()), None)
+
     m = re.match(r"(?:open|launch|start|run)\s+(?:the\s+)?(?:app\s+)?(.+)", t)
     if m:
         target = m.group(1).strip()
@@ -170,6 +190,7 @@ def parse(text):
         if wm:
             target = target[:wm.start()].strip()
             force_web = True
+        target = _strip_target(target)
         for name, folder in FOLDERS.items():
             if target in (name, f"{name} folder", f"my {name}"):
                 return ("folder", folder, None)
