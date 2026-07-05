@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.8.0 — 2026-07-05
+
+### Added
+- "Open X" jumps to an already-open window instead of opening a duplicate
+  or searching for the phrase. For an installed app it focuses the app's
+  own window (ignoring browser tabs that merely mention the name); for a
+  site it focuses the open tab. New "switch to / focus X" intent.
+- Trailing descriptions are stripped, so "open youtube which is already
+  open", "open comet that is running", and "open youtube on chrome" all
+  resolve to the bare name.
+- Built-in proper-noun hints so names transcribe correctly. "Claude" is
+  no longer heard as "cloud"; GitHub, OBS, Spotify, and others too.
+- Many more recognized web services for "open X" (Reddit, LinkedIn,
+  Wikipedia, Drive, Docs, Calendar, Outlook, Teams, Gemini, and more).
+
+### Fixed
+- Saying "open <app> which is already open" no longer web-searches the
+  whole sentence.
+
 ## 2.7.0 — 2026-07-05
 
 ### Fixed

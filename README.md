@@ -111,6 +111,7 @@ installer.
 | Say | Happens |
 |---|---|
 | "open obs", "launch discord" | Opens the app if installed (fuzzy matching included) |
+| "open youtube which is already open", "switch to spotify" | Jumps to the open window instead of a duplicate |
 | "open spotify" (not installed) | Opens the web version instead |
 | "open spotify in web" | Forces the web version even if the app is installed |
 | "download spotify" | Opens its official download page |
@@ -132,11 +133,16 @@ installer.
 | "shut down the computer" | Shutdown after 60 s; "cancel shutdown" aborts |
 | "what time is it", "what's the date" | Answers on screen and out loud |
 
+If something is already open, "open X" brings it to the front rather than
+launching a duplicate or searching for it, and it ignores the extra words
+people add ("open youtube which is already open" just means YouTube).
+
 If a command is slightly misheard, WhispLocal makes a second pass: it
 corrects the leading verb ("oben chrome" becomes "open chrome") or
 matches the whole phrase to the closest known command before giving up.
-Your command words and app names are fed into the recognizer, so it
-hears you better the more you use it.
+Common names like Claude, GitHub, and OBS are recognized as names rather
+than similar-sounding words, and your own command words and app names are
+fed into the recognizer, so it hears you better the more you use it.
 
 It stays out of your way on purpose. It will not delete files, and it
 will not make purchases, payments, or bookings for you: booking and
