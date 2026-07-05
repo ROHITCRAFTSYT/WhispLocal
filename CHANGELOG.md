@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.7.0 — 2026-07-05
+
+### Fixed
+- Microsoft Store / UWP apps (Spotify, WhatsApp, and others) are now
+  detected and launched. Previously only classic Start Menu shortcuts
+  were indexed, so a Store-installed app was reported as "not installed"
+  and opened on the web. The index now also reads Get-StartApps and
+  launches UWP apps by their AppUserModelID.
+
+### Added
+- "Play <app>" opens the app when it is installed (so "play spotify"
+  opens the Spotify app), and only searches for music when the name is
+  not an installed app.
+- Reinforcement: when a spoken name matches more than one app, the one
+  you have opened most often wins, learned from your usage over time.
+
 ## 2.6.0 — 2026-07-05
 
 ### Added

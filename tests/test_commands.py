@@ -247,5 +247,55 @@ class OpenBehaviourTests(unittest.TestCase):
         self.assertIn("spotify.com/download", self.opened[0])
 
 
+class StoreAppAndReinforcementTests(unittest.TestCase):
+    def setUp(self):
+        self.e = CommandEngine(build_index=False)
+        self.launched = []
+        self.popened = []
+        self.opened = []
+        self._start = commands.os.startfile
+        self._popen = commands.subprocess.Popen
+        self._open = commands.webbrowser.open
+        commands.os.startfile = lambda p: self.launched.append(p)
+        commands.subprocess.Popen = lambda a, **k: self.popened.append(a)
+        commands.webbrowser.open = lambda u: self.opened.append(u)
+
+    def tearDown(self):
+        commands.os.startfile = self._start
+        commands.subprocess.Popen = self._popen
+        commands.webbrowser.open = self._open
+
+    def test_launches_store_app_by_appid(self):
+        self.e.app_index = {"spotify": "appid:SpotifyAB.SpotifyMusic!Spotify"}
+        ok, msg = self.e.run("open spotify")
+        self.assertTrue(ok)
+        self.assertIn("Spotify", msg)
+        self.assertEqual(self.opened, [])          # not the browser
+        self.assertEqual(len(self.popened), 1)     # launched via explorer
+        self.assertIn("shell:AppsFolder\\SpotifyAB.SpotifyMusic!Spotify",
+                      self.popened[0])
+
+    def test_play_installed_app_opens_the_app(self):
+        self.e.app_index = {"spotify": "appid:SpotifyAB.SpotifyMusic!Spotify"}
+        ok, msg = self.e.run("play spotify")
+        self.assertTrue(ok)
+        self.assertIn("Spotify", msg)
+        self.assertEqual(len(self.popened), 1)     # opened the app
+        self.assertEqual(self.opened, [])          # not a music search
+
+    def test_play_song_still_searches(self):
+        self.e.app_index = {}
+        ok, msg = self.e.run("play despacito")
+        self.assertEqual(len(self.opened), 1)
+        self.assertIn("music", self.opened[0])
+
+    def test_usage_reinforces_ambiguous_match(self):
+        self.e.app_index = {"microsoft teams": "p1", "teams classic": "p2"}
+        self.e.usage = {}
+        self.assertEqual(self.e.find_app("teams")[1], "teams classic")
+        self.e.usage = {"microsoft teams": 3}
+        self.assertEqual(self.e.find_app("teams")[1], "microsoft teams")
+
+
 if __name__ == "__main__":
     unittest.main()

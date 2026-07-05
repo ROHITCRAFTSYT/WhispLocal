@@ -30,7 +30,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.6.0"
+__version__ = "2.7.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -84,6 +84,8 @@ class App:
             note_saver=self._save_note,
             profile_saver=self._save_profile,
             on_action=self._on_command)
+        # Reinforcement: ambiguous app names resolve to the one used most.
+        self.commands.usage = self.adaptive.app_counts
         self.overlay = Overlay(
             get_levels=lambda: list(self.recorder.levels),
             position=self.config.get("overlay_position", "bottom-center"))

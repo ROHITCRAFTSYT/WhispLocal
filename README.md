@@ -121,8 +121,9 @@ one. Confirmations are spoken back through the built-in Windows voice;
 turn that off in Settings if it gets chatty.
 
 Commands are matched locally against a fixed set of patterns. Apps are
-found by indexing your Start Menu, so "open OBS Studio" works for
-anything installed. What you can say:
+found by indexing both your Start Menu shortcuts and your installed
+Microsoft Store apps, so "open Spotify" opens the Spotify app whether it
+came from the Store or a normal installer. What you can say:
 
 | Say | Happens |
 |---|---|

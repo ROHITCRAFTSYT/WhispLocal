@@ -17,12 +17,15 @@ Guardrails (see GUARDRAILS.md):
 import ctypes
 import ctypes.wintypes as wintypes
 import difflib
+import json
 import os
 import re
 import subprocess
 import threading
 import time
 import webbrowser
+
+CREATE_NO_WINDOW = 0x08000000
 
 # ----- intent table ---------------------------------------------------------
 
@@ -285,6 +288,9 @@ class CommandEngine:
     def __init__(self, build_index=True, note_saver=None, on_action=None,
                  profile_saver=None):
         self.app_index = {}
+        # usage counts (label -> times launched); the app points this at the
+        # learning profile so previously-used apps win ambiguous matches.
+        self.usage = {}
         # note_saver(text) -> (ok, feedback); wired by the app to Obsidian.
         self.note_saver = note_saver
         # profile_saver() -> (ok, feedback); writes the learned profile.
@@ -315,14 +321,16 @@ class CommandEngine:
         return None
 
     def _build_index(self):
+        skip = ("uninstall", "help", "readme", "website", "documentation")
+        index = {}
+
+        # 1. Classic Start Menu shortcuts (.lnk / .url).
         roots = [
             os.path.join(os.environ.get("ProgramData", ""),
                          r"Microsoft\Windows\Start Menu\Programs"),
             os.path.join(os.environ.get("APPDATA", ""),
                          r"Microsoft\Windows\Start Menu\Programs"),
         ]
-        skip = ("uninstall", "help", "readme", "website", "documentation")
-        index = {}
         for root in roots:
             if not os.path.isdir(root):
                 continue
@@ -335,7 +343,46 @@ class CommandEngine:
                         continue
                     if name not in index:
                         index[name] = os.path.join(dirpath, f)
+
+        # 2. Get-StartApps also lists Microsoft Store / UWP apps (Spotify,
+        #    WhatsApp, etc.) that have no Start Menu shortcut. Launch those
+        #    by their AppUserModelID via the AppsFolder shell namespace.
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-StartApps | ConvertTo-Json -Compress"],
+                capture_output=True, text=True, timeout=20,
+                creationflags=CREATE_NO_WINDOW)
+            data = json.loads(out.stdout or "[]")
+            if isinstance(data, dict):
+                data = [data]
+            for item in data:
+                name = (item.get("Name") or "").strip().lower()
+                appid = (item.get("AppID") or "").strip()
+                if not name or not appid or any(s in name for s in skip):
+                    continue
+                if name not in index:
+                    index[name] = (appid if os.path.exists(appid)
+                                   else "appid:" + appid)
+        except Exception:
+            pass
+
         self.app_index = index
+
+    def _launch(self, target):
+        """Start an indexed app, handling both file shortcuts and UWP AppIDs."""
+        if target.startswith("appid:"):
+            subprocess.Popen(
+                ["explorer.exe", "shell:AppsFolder\\" + target[6:]],
+                creationflags=CREATE_NO_WINDOW)
+        else:
+            os.startfile(target)
+
+    def _best(self, candidates):
+        """Pick among matching shortcuts: prefer ones the user has launched
+        before (reinforcement), then the shortest name."""
+        return sorted(candidates,
+                      key=lambda k: (-self.usage.get(k, 0), len(k)))[0]
 
     # Filler words that add nothing to an app name.
     _APP_STOP = frozenset(("app", "the", "my", "please", "up", "program"))
@@ -359,20 +406,20 @@ class CommandEngine:
         # so "obs" prefers "obs studio" and "code" avoids "zcode".
         word_exact = [k for k, ts in tokens.items() if name in ts]
         if word_exact:
-            best = min(word_exact, key=len)
+            best = self._best(word_exact)
             return idx[best], best
 
         # Prefix of the whole shortcut name ("microsoft ed" -> microsoft edge).
         starts = [k for k in idx if k.startswith(name)]
         if starts:
-            best = min(starts, key=len)
+            best = self._best(starts)
             return idx[best], best
 
         if " " in name:
             # A multi-word phrase appearing verbatim in the shortcut.
             phrase = [k for k in idx if name in k]
             if phrase:
-                best = min(phrase, key=len)
+                best = self._best(phrase)
                 return idx[best], best
             # Or each spoken word begins some word of the shortcut.
             words = [w for w in name.split() if w not in self._APP_STOP]
@@ -380,14 +427,14 @@ class CommandEngine:
                 allw = [k for k, ts in tokens.items()
                         if all(any(t.startswith(w) for t in ts) for w in words)]
                 if allw:
-                    best = min(allw, key=len)
+                    best = self._best(allw)
                     return idx[best], best
         elif len(name) >= 3:
             # A word of the shortcut begins with the name ("calc" -> calculator).
             word_prefix = [k for k, ts in tokens.items()
                            if any(t.startswith(name) for t in ts)]
             if word_prefix:
-                best = min(word_prefix, key=len)
+                best = self._best(word_prefix)
                 return idx[best], best
 
         # Conservative fuzzy match, only for longer names, to catch small
@@ -486,7 +533,7 @@ class CommandEngine:
             found = self.find_app(arg)
             if found:
                 target, label = found
-                os.startfile(target)
+                self._launch(target)
                 return True, f"Opening {label.title()}"
             return self._open_web(arg, installed=False)
 
@@ -547,6 +594,13 @@ class CommandEngine:
             if not query:
                 webbrowser.open("https://music.youtube.com/")
                 return True, "Opening music"
+            # "play spotify" means open the Spotify app if it is installed,
+            # not search the web for a song called "spotify".
+            if service is None:
+                found = self.find_app(query)
+                if found:
+                    self._launch(found[0])
+                    return True, f"Opening {found[1].title()}"
             if service == "spotify":
                 webbrowser.open(
                     "https://open.spotify.com/search/" + _quote(query))
