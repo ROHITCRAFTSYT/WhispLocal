@@ -131,7 +131,8 @@ _TARGET_TAIL = re.compile(
     r"(?:is|has|have|was|i)?\s*(?:already|just)?\s*(?:been\s+)?"
     r"(?:open|opened|opening|running|there)\b.*$"
     r"|\s+(?:on|in|inside|using|with)\s+(?:the\s+)?"
-    r"(?:chrome|edge|firefox|brave|browser|window|tab)\b.*$",
+    r"(?:chrome|edge|firefox|brave|browser|window|tab)\b.*$"
+    r"|\s+(?:window|tab|app)s?$",
     re.I)
 
 

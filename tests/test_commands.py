@@ -124,6 +124,23 @@ class ParseTests(unittest.TestCase):
     def test_plain_open_is_open_app(self):
         self.assertEqual(kind_arg("open notepad"), ("open_app", "notepad"))
 
+    def test_strips_already_open_qualifiers(self):
+        self.assertEqual(kind_arg("open youtube which has already been open"),
+                         ("open_app", "youtube"))
+        self.assertEqual(kind_arg("open comet that is already opened"),
+                         ("open_app", "comet"))
+        self.assertEqual(kind_arg("open spotify which is running"),
+                         ("open_app", "spotify"))
+
+    def test_strips_on_browser(self):
+        self.assertEqual(kind_arg("open youtube on chrome"),
+                         ("open_app", "youtube"))
+
+    def test_switch_intent(self):
+        self.assertEqual(kind_arg("switch to youtube"), ("switch", "youtube"))
+        self.assertEqual(kind_arg("focus the spotify window"),
+                         ("switch", "spotify"))
+
     def test_play_music_variants(self):
         self.assertEqual(kind_arg("play some music"), ("play_music", ("", None)))
         self.assertEqual(kind_arg("play music"), ("play_music", ("", None)))
@@ -295,6 +312,63 @@ class StoreAppAndReinforcementTests(unittest.TestCase):
         self.assertEqual(self.e.find_app("teams")[1], "teams classic")
         self.e.usage = {"microsoft teams": 3}
         self.assertEqual(self.e.find_app("teams")[1], "microsoft teams")
+
+
+class SwitchToWindowTests(unittest.TestCase):
+    def setUp(self):
+        self.e = CommandEngine(build_index=False)
+        self.focused = []
+        self.launched = []
+        self.opened = []
+        self._enum = commands._enum_windows
+        self._focus = commands._focus_hwnd
+        self._start = commands.os.startfile
+        self._open = commands.webbrowser.open
+        commands._focus_hwnd = lambda h: self.focused.append(h)
+        commands.os.startfile = lambda p: self.launched.append(p)
+        commands.webbrowser.open = lambda u: self.opened.append(u)
+
+    def tearDown(self):
+        commands._enum_windows = self._enum
+        commands._focus_hwnd = self._focus
+        commands.os.startfile = self._start
+        commands.webbrowser.open = self._open
+
+    def _windows(self, wins):
+        commands._enum_windows = lambda: wins
+
+    def test_open_focuses_already_open_site_tab(self):
+        self._windows([(101, "YouTube - Google Chrome", "chrome.exe")])
+        ok, msg = self.e.run("open youtube which is already open")
+        self.assertTrue(ok)
+        self.assertIn("Switched", msg)
+        self.assertEqual(self.focused, [101])   # focused, not searched
+        self.assertEqual(self.opened, [])
+
+    def test_open_installed_app_ignores_browser_tab(self):
+        # A browser tab titled "notepad ..." must NOT satisfy "open notepad".
+        self._windows([(202, "notepad - Google Search", "chrome.exe")])
+        self.e.app_index = {"notepad": "notepad"}
+        ok, msg = self.e.run("open notepad")
+        self.assertIn("Opening", msg)           # launched, not focused
+        self.assertEqual(self.launched, ["notepad"])
+        self.assertEqual(self.focused, [])
+
+    def test_open_focuses_running_app_window(self):
+        self._windows([(303, "Untitled - Notepad", "notepad.exe")])
+        self.e.app_index = {"notepad": "notepad"}
+        ok, msg = self.e.run("open notepad")
+        self.assertIn("Switched", msg)
+        self.assertEqual(self.focused, [303])
+        self.assertEqual(self.launched, [])
+
+    def test_switch_falls_back_to_open_when_not_running(self):
+        self._windows([])
+        ok, msg = self.e.run("switch to spotify")
+        # nothing open -> opens (web here, since app_index empty)
+        self.assertTrue(ok)
+        self.assertEqual(self.focused, [])
+        self.assertEqual(len(self.opened), 1)
 
 
 if __name__ == "__main__":
