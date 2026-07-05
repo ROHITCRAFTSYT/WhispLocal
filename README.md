@@ -127,7 +127,7 @@ anything installed. What you can say:
 | Say | Happens |
 |---|---|
 | "open chrome", "launch spotify" | Starts the app (fuzzy matching included) |
-| "open spotify" (not installed) | Opens its official download page |
+| "open spotify" (not installed) | Asks "Download it?" — Yes opens the download page |
 | "close chrome", "quit spotify" | Closes the app gracefully (save prompts still appear) |
 | "open downloads", "open documents" | Opens the folder |
 | "open youtube.com", "go to github" | Opens the site |

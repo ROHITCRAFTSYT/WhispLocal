@@ -247,10 +247,12 @@ def parse(text):
 # ----- execution -------------------------------------------------------------
 
 class CommandEngine:
-    def __init__(self, build_index=True, note_saver=None):
+    def __init__(self, build_index=True, note_saver=None, ask=None):
         self.app_index = {}
         # note_saver(text) -> (ok, feedback); wired by the app to Obsidian.
         self.note_saver = note_saver
+        # ask(question) -> bool; wired by the app to a Yes/No popup.
+        self.ask = ask
         if build_index:
             threading.Thread(target=self._build_index, daemon=True).start()
 
@@ -277,26 +279,81 @@ class CommandEngine:
                         index[name] = os.path.join(dirpath, f)
         self.app_index = index
 
+    # Filler words that add nothing to an app name.
+    _APP_STOP = frozenset(("app", "the", "my", "please", "up", "program"))
+
     def find_app(self, name):
-        """Resolve a spoken app name to something launchable, or None."""
-        name = name.strip()
+        """Resolve a spoken app name to something launchable, or None.
+        Tries, in order: alias, exact, prefix, substring, all-words-present,
+        and fuzzy — so slightly misheard names still resolve."""
+        name = name.strip().lower()
         if name in ALIASES:
             return ALIASES[name], name
         idx = self.app_index
+        if not idx:
+            return None
         if name in idx:
             return idx[name], name
+
+        tokens = {k: k.split() for k in idx}
+
+        # A whole word of the shortcut equals the spoken name. Most precise,
+        # so "obs" prefers "obs studio" and "code" avoids "zcode".
+        word_exact = [k for k, ts in tokens.items() if name in ts]
+        if word_exact:
+            best = min(word_exact, key=len)
+            return idx[best], best
+
+        # Prefix of the whole shortcut name ("microsoft ed" -> microsoft edge).
         starts = [k for k in idx if k.startswith(name)]
         if starts:
             best = min(starts, key=len)
             return idx[best], best
-        contains = [k for k in idx if name in k]
-        if contains:
-            best = min(contains, key=len)
-            return idx[best], best
-        close = difflib.get_close_matches(name, list(idx), n=1, cutoff=0.75)
-        if close:
-            return idx[close[0]], close[0]
+
+        if " " in name:
+            # A multi-word phrase appearing verbatim in the shortcut.
+            phrase = [k for k in idx if name in k]
+            if phrase:
+                best = min(phrase, key=len)
+                return idx[best], best
+            # Or each spoken word begins some word of the shortcut.
+            words = [w for w in name.split() if w not in self._APP_STOP]
+            if words:
+                allw = [k for k, ts in tokens.items()
+                        if all(any(t.startswith(w) for t in ts) for w in words)]
+                if allw:
+                    best = min(allw, key=len)
+                    return idx[best], best
+        elif len(name) >= 3:
+            # A word of the shortcut begins with the name ("calc" -> calculator).
+            word_prefix = [k for k, ts in tokens.items()
+                           if any(t.startswith(name) for t in ts)]
+            if word_prefix:
+                best = min(word_prefix, key=len)
+                return idx[best], best
+
+        # Conservative fuzzy match, only for longer names, to catch small
+        # mishearings ("discrd" -> discord) without grabbing unrelated apps.
+        if len(name) >= 5:
+            close = difflib.get_close_matches(name, list(idx), n=1, cutoff=0.8)
+            if close:
+                return idx[close[0]], close[0]
         return None
+
+    def _offer_download(self, arg):
+        """App not installed: ask (via popup) before opening a download page."""
+        known = arg in DOWNLOADS
+        url = DOWNLOADS.get(arg) or (
+            "https://www.google.com/search?q=" + _quote(f"download {arg}"))
+        if self.ask is not None:
+            question = (f'"{arg.title()}" does not seem to be installed.\n\n'
+                        f"Do you want to download it?")
+            if not self.ask(question):
+                return True, "Okay, cancelled"
+        webbrowser.open(url)
+        if known:
+            return True, f"Opening the download page for {arg.title()}"
+        return True, f"Finding {arg} to download"
 
     def _close_app(self, name):
         """Gracefully close the app whose window or process matches `name`.
@@ -349,16 +406,7 @@ class CommandEngine:
             if arg in SITES:
                 webbrowser.open(SITES[arg])
                 return True, f"Opening {arg.title()}"
-            # Not installed: send the user to a download page instead.
-            url = DOWNLOADS.get(arg)
-            if url:
-                webbrowser.open(url)
-                return True, (f"{arg.title()} is not installed. "
-                              f"Opening its download page")
-            webbrowser.open("https://www.google.com/search?q="
-                            + _quote(f"download {arg}"))
-            return True, (f'"{arg}" is not installed. Opening a download '
-                          f"search so you can get it")
+            return self._offer_download(arg)
 
         if kind == "close_app":
             return self._close_app(arg)

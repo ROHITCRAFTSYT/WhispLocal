@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.0 — 2026-07-05
+
+### Changed
+- App-name matching is more accurate and no longer opens the wrong app.
+  It matches whole words of a shortcut ("obs" -> OBS Studio, "code" ->
+  Visual Studio Code) and only falls back to fuzzy matching for longer
+  names, so genuinely missing apps are recognized as missing instead of
+  resolving to something unrelated.
+- When an app is not installed, WhispLocal now asks with a Yes/No popup
+  before opening a download page, instead of opening a browser tab
+  automatically.
+
+### Fixed
+- Installed apps that previously fell through to "not found" now launch.
+
 ## 2.3.0 — 2026-07-05
 
 ### Added

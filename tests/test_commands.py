@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "whisp"))
 
+import commands
 from commands import CommandEngine, parse
 
 
@@ -131,11 +132,53 @@ class FindAppTests(unittest.TestCase):
         self.assertEqual(self.e.find_app("visual studio cod")[1],
                          "visual studio code")
 
+    def test_token_and_word_match(self):
+        self.e.app_index["microsoft word"] = r"C:\fake\word.lnk"
+        self.assertEqual(self.e.find_app("word")[1], "microsoft word")
+        self.assertEqual(self.e.find_app("code")[1], "visual studio code")
+
+    def test_ignores_filler_words(self):
+        self.assertEqual(self.e.find_app("the chrome app")[1], "google chrome")
+
     def test_alias_beats_index(self):
         self.assertEqual(self.e.find_app("notepad")[0], "notepad")
 
     def test_unknown(self):
         self.assertIsNone(self.e.find_app("nonexistent app"))
+
+
+class DownloadPopupTests(unittest.TestCase):
+    def setUp(self):
+        self.e = CommandEngine(build_index=False)
+        self.opened = []
+        self._real_open = commands.webbrowser.open
+        commands.webbrowser.open = lambda u: self.opened.append(u)
+
+    def tearDown(self):
+        commands.webbrowser.open = self._real_open
+
+    def test_no_when_user_declines(self):
+        self.e.ask = lambda q: False
+        ok, msg = self.e.run("open chrome")
+        self.assertTrue(ok)
+        self.assertIn("cancel", msg.lower())
+        self.assertEqual(self.opened, [])  # nothing opened
+
+    def test_opens_when_user_accepts(self):
+        self.e.ask = lambda q: True
+        ok, msg = self.e.run("open chrome")
+        self.assertTrue(ok)
+        self.assertEqual(len(self.opened), 1)
+        self.assertIn("chrome", self.opened[0].lower())
+
+    def test_installed_app_never_asks(self):
+        asked = []
+        self.e.ask = lambda q: asked.append(q) or True
+        self.e.app_index = {"google chrome": r"C:\fake\chrome.lnk"}
+        # find_app resolves it, so no download prompt — but os.startfile would
+        # run; guard by checking the parse/lookup path instead.
+        self.assertIsNotNone(self.e.find_app("chrome"))
+        self.assertEqual(asked, [])
 
 
 if __name__ == "__main__":

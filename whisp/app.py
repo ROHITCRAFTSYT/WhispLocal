@@ -30,7 +30,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.3.0"
+__version__ = "2.4.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -80,7 +80,8 @@ class App:
         self.transcriber = Transcriber(self.config)
         self.adaptive = Adaptive(
             APP_DIR, enabled=self.config.get("adaptive_learning", True))
-        self.commands = CommandEngine(note_saver=self._save_note)
+        self.commands = CommandEngine(
+            note_saver=self._save_note, ask=self._ask)
         self.overlay = Overlay(
             get_levels=lambda: list(self.recorder.levels),
             position=self.config.get("overlay_position", "bottom-center"))
@@ -136,6 +137,26 @@ class App:
     def _save_note(self, text):
         """Called by the command engine for 'take a note ...' commands."""
         return obsidian.save_note(self.config.get("obsidian_vault", ""), text)
+
+    def _ask(self, question):
+        """Show a Yes/No popup on the tk thread; block the caller for the
+        answer. Called from command worker threads."""
+        result = {"yes": False}
+        done = threading.Event()
+
+        def show():
+            try:
+                from tkinter import messagebox
+                win = self.overlay.root
+                win.attributes("-topmost", True)
+                result["yes"] = messagebox.askyesno(
+                    "WhispLocal", question, parent=win)
+            finally:
+                done.set()
+
+        self.overlay.call(show)
+        done.wait(timeout=60)
+        return result["yes"]
 
     def set_mode(self, mode):
         cfg = dict(self.config)
