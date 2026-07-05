@@ -127,10 +127,15 @@ anything installed. What you can say:
 | Say | Happens |
 |---|---|
 | "open chrome", "launch spotify" | Starts the app (fuzzy matching included) |
+| "open spotify" (not installed) | Opens its official download page |
+| "close chrome", "quit spotify" | Closes the app gracefully (save prompts still appear) |
 | "open downloads", "open documents" | Opens the folder |
 | "open youtube.com", "go to github" | Opens the site |
-| "search for python tutorials" | Google search in your browser |
+| "search for python tutorials", "look up the capital of Japan" | Web search |
 | "play lo-fi beats on youtube" | YouTube search |
+| "find market data for Tesla", "stock price of Apple" | Opens the market/stock page |
+| "book a table at Bukhara" | Opens reservation options (you confirm it) |
+| "take a note buy milk tomorrow" | Saves a formatted note to your Obsidian vault |
 | "type hello there" | Types the text at the cursor |
 | "press control shift s", "press enter" | Sends the key combination |
 | "volume up", "mute", "next song", "pause" | Audio and media control |
@@ -141,8 +146,42 @@ anything installed. What you can say:
 | "shut down the computer" | Shutdown after 60 s; "cancel shutdown" aborts |
 | "what time is it", "what's the date" | Answers on screen and out loud |
 
-Deliberately not included: deleting files, and anything destructive
-without an undo. Command recognition is English-only for now.
+It stays out of your way on purpose. It will not delete files, and it
+will not make purchases, payments, or bookings on your behalf: booking
+and market commands open the right page so you finish the action
+yourself. Closing an app is a graceful request, so unsaved work still
+prompts you to save. See [GUARDRAILS.md](GUARDRAILS.md) for the full
+list of what it will and will not do. Command recognition is
+English-only for now.
+
+## Notes go to Obsidian
+
+Point WhispLocal at your [Obsidian](https://obsidian.md) vault in
+Settings (Obsidian vault, Browse) and you can say "take a note ..." in
+voice control mode. Notes are appended to a dated file in a `WhispLocal`
+folder inside your vault, with YAML frontmatter and timestamped bullets,
+so they are tidy and easy to find:
+
+```markdown
+---
+created: 2026-07-05
+source: WhispLocal
+tags: [whisplocal, voice-note]
+---
+
+# Voice notes — 2026-07-05
+
+- **18:32** Buy milk tomorrow.
+- **18:41** Call Dr. Mehta about the report.
+```
+
+The writer only ever touches files inside the vault folder you chose.
+
+## Where the bar sits
+
+By default the recording bar sits at the bottom-center of the screen. If
+it gets in the way, Settings has an "On-screen bar position" option with
+seven placements (each corner, each edge center, or screen center).
 
 ## It learns how you talk
 

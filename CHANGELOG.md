@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.3.0 — 2026-07-05
+
+### Added
+- Close apps by voice ("close chrome", "quit spotify"). Uses a graceful
+  window close, never a force-kill, so unsaved-work prompts still appear.
+  The shell, taskbar, and WhispLocal itself are never targeted.
+- Download suggestions: asking to open an app that is not installed opens
+  its official download page (or a download search) instead of failing.
+- Obsidian integration: set a vault path in Settings and say "take a
+  note ..." to append a formatted, timestamped note to a dated file
+  inside the vault. Writing is sandboxed to the vault folder.
+- Information commands: "look up ...", "find market data for ...",
+  "stock price of ...", and "book a table at ..." open the relevant page.
+  No autonomous purchases, payments, or bookings are ever made.
+- Repositionable on-screen bar: choose from seven placements in Settings
+  instead of always bottom-center.
+- Fancier waveform: bars now use an amplitude gradient and the pill has a
+  two-tone edge.
+- GUARDRAILS.md documenting the data-protection rules.
+
+### Fixed
+- "close chrome" and similar no longer report "did not understand".
+
 ## 2.2.0 — 2026-07-04
 
 ### Added

@@ -10,6 +10,8 @@
   "cpu_threads": 0,
   "input_device": null,
   "insert_mode": "paste",
+  "overlay_position": "bottom-center",
+  "obsidian_vault": "",
   "restore_clipboard": true,
   "remove_fillers": true,
   "capitalize_first": true,

@@ -19,6 +19,7 @@ APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import configio
+import obsidian
 from adaptive import Adaptive
 from audio import Recorder
 from cleanup import clean
@@ -29,7 +30,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -79,8 +80,10 @@ class App:
         self.transcriber = Transcriber(self.config)
         self.adaptive = Adaptive(
             APP_DIR, enabled=self.config.get("adaptive_learning", True))
-        self.commands = CommandEngine()  # app index builds in background
-        self.overlay = Overlay(get_levels=lambda: list(self.recorder.levels))
+        self.commands = CommandEngine(note_saver=self._save_note)
+        self.overlay = Overlay(
+            get_levels=lambda: list(self.recorder.levels),
+            position=self.config.get("overlay_position", "bottom-center"))
         self.state = IDLE
         self.task = "transcribe"
         self.active_key = None
@@ -115,6 +118,8 @@ class App:
                 old_t.language = new_t.language
                 old_t.beam_size = new_t.beam_size
             self.adaptive.enabled = self.config.get("adaptive_learning", True)
+            self.overlay.set_position(
+                self.config.get("overlay_position", "bottom-center"))
             if self.tray:
                 self.tray.update_menu()
             log("config applied")
@@ -127,6 +132,10 @@ class App:
         self.save_config(cfg)
         self.reload_config()
         log(f"model switched to {name}")
+
+    def _save_note(self, text):
+        """Called by the command engine for 'take a note ...' commands."""
+        return obsidian.save_note(self.config.get("obsidian_vault", ""), text)
 
     def set_mode(self, mode):
         cfg = dict(self.config)

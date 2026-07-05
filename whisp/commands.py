@@ -4,11 +4,18 @@ parse() is pure (regex intent matching, no side effects) so it is unit
 testable; execute() performs the action. App launching works from an
 index of Start Menu shortcuts built in the background at startup.
 
-Everything runs locally. Deliberately excluded: deleting files, closing
-other people's work without a window in focus, and instant shutdown
-(shutdown gets a 60-second delay and a voice-cancellable escape hatch).
+Guardrails (see GUARDRAILS.md):
+- No autonomous purchases, payments, or bookings. "book"/"find" style
+  commands open the relevant page so the user completes the action.
+- Closing an app sends a graceful close (WM_CLOSE), never a force-kill,
+  so apps can still prompt to save unsaved work. The shell/taskbar and
+  this app itself are never targeted.
+- Note-taking writes only inside the user's configured Obsidian vault.
+- Shutdown is delayed 60 s and voice-cancellable. File deletion is not
+  supported at all.
 """
 import ctypes
+import ctypes.wintypes as wintypes
 import difflib
 import os
 import re
@@ -52,6 +59,39 @@ FOLDERS = {
     "music": "Music", "videos": "Videos", "desktop": "Desktop",
 }
 
+# Official download pages for common apps, used when the app is not
+# installed. Anything not here falls back to a web search for "download X".
+DOWNLOADS = {
+    "chrome": "https://www.google.com/chrome/",
+    "firefox": "https://www.mozilla.org/firefox/new/",
+    "brave": "https://brave.com/download/",
+    "spotify": "https://www.spotify.com/download/",
+    "discord": "https://discord.com/download",
+    "zoom": "https://zoom.us/download",
+    "vlc": "https://www.videolan.org/vlc/",
+    "vs code": "https://code.visualstudio.com/download",
+    "visual studio code": "https://code.visualstudio.com/download",
+    "obs": "https://obsobject.example/invalid",  # replaced below
+    "obs studio": "https://obsproject.com/download",
+    "obsidian": "https://obsidian.md/download",
+    "telegram": "https://desktop.telegram.org/",
+    "whatsapp": "https://www.whatsapp.com/download",
+    "slack": "https://slack.com/downloads/windows",
+    "steam": "https://store.steampowered.com/about/",
+    "notion": "https://www.notion.so/desktop",
+    "figma": "https://www.figma.com/downloads/",
+    "python": "https://www.python.org/downloads/",
+    "git": "https://git-scm.com/download/win",
+}
+DOWNLOADS["obs"] = "https://obsproject.com/download"
+
+# Sites that host bookings/reservations, so "book a table at X" opens a
+# real starting point rather than pretending to transact.
+RESERVATION_SEARCH = "https://www.google.com/search?q="
+
+# Windows whose apps must never be closed by voice (shell, this app).
+_PROTECTED_CLOSE = ("program manager", "whisplocal", "task manager")
+
 SHORTCUTS = {
     "copy": ("ctrl+c", "Copied"), "paste": ("ctrl+v", "Pasted"),
     "cut": ("ctrl+x", "Cut"), "undo": ("ctrl+z", "Undone"),
@@ -92,6 +132,25 @@ def parse(text):
     t = _normalize(text)
     if not t:
         return None
+
+    # Notes go to Obsidian. Keep the original casing of the note body.
+    m = re.match(
+        r"(?:take|make|write|add|save|create)\s+(?:a\s+)?note\s+"
+        r"(?:that\s+|saying\s+|about\s+)?(.+)", t)
+    if not m:
+        m = re.match(r"(?:note that|remember that|note down|jot down)\s+(.+)", t)
+    if not m:
+        m = re.match(r"save (?:this )?to obsidian[:,]?\s+(.+)", t, )
+    if m:
+        span = m.span(1)
+        return ("note", text.strip()[span[0]:span[1]].strip() or m.group(1), None)
+
+    m = re.match(r"(?:close|quit|exit|kill)\s+(?:the\s+)?(.+)", t)
+    if m:
+        target = m.group(1).strip()
+        if target not in ("window", "this window", "current window",
+                          "tab", "this tab", "current tab", "this", "everything"):
+            return ("close_app", target, None)
 
     m = re.match(r"(?:open|launch|start|run)\s+(?:the\s+)?(?:app\s+)?(.+)", t)
     if m:
@@ -158,14 +217,40 @@ def parse(text):
     if re.match(r"what(?:'s| is) (?:the date|today's date)|what day is it", t):
         return ("date", None, None)
 
+    # Reservations and bookings: open a starting point, never transact.
+    m = re.match(
+        r"(?:book|reserve|make)\s+(?:a\s+)?(?:table|reservation|booking|"
+        r"appointment)\s+(?:at|for|with|in)?\s*(.+)", t)
+    if m:
+        return ("booking", m.group(1).strip(), None)
+
+    # Market data and stock lookups open the relevant finance page.
+    m = re.match(
+        r"(?:find|get|show|look up)?\s*(?:the\s+)?(?:market data|stock price|"
+        r"share price|stock)\s+(?:for|of|on)?\s*(.+)", t)
+    if m and m.group(1).strip():
+        return ("market", m.group(1).strip(), None)
+    m = re.match(r"(?:price of|how is)\s+(.+?)(?:\s+stock| doing)?$", t)
+    if m and ("stock" in t or "price" in t or "share" in t):
+        return ("market", m.group(1).strip(), None)
+
+    # General information: open a web search so the answer is one click away.
+    m = re.match(
+        r"(?:look up|find out|find|tell me about|what(?:'s| is)|who(?:'s| is)|"
+        r"how (?:do|to|much|many)|when (?:is|was)|where (?:is|are))\s+(.+)", t)
+    if m:
+        return ("lookup", m.group(0).strip(), None)
+
     return None
 
 
 # ----- execution -------------------------------------------------------------
 
 class CommandEngine:
-    def __init__(self, build_index=True):
+    def __init__(self, build_index=True, note_saver=None):
         self.app_index = {}
+        # note_saver(text) -> (ok, feedback); wired by the app to Obsidian.
+        self.note_saver = note_saver
         if build_index:
             threading.Thread(target=self._build_index, daemon=True).start()
 
@@ -213,6 +298,36 @@ class CommandEngine:
             return idx[close[0]], close[0]
         return None
 
+    def _close_app(self, name):
+        """Gracefully close the app whose window or process matches `name`.
+        Uses WM_CLOSE (never TerminateProcess) so unsaved-work prompts
+        still appear. Returns (ok, feedback)."""
+        name = name.strip().lower()
+        # Let common aliases match their real process/title.
+        alias_titles = {"chrome": "google chrome", "vscode": "visual studio code",
+                        "vs code": "visual studio code", "explorer": "file explorer"}
+        needle = alias_titles.get(name, name)
+
+        matches = []
+        for hwnd, title, exe in _enum_windows():
+            tl = title.lower()
+            el = os.path.splitext(exe)[0].lower()
+            if any(p in tl for p in _PROTECTED_CLOSE):
+                continue
+            if el in ("explorer",) and "file explorer" not in tl:
+                continue  # never close the shell/taskbar
+            if needle in tl or needle == el or needle in el:
+                matches.append((hwnd, title))
+
+        if not matches:
+            return False, f'No open window for "{name}" found'
+        WM_CLOSE = 0x0010
+        for hwnd, _title in matches:
+            ctypes.windll.user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+        label = name.title()
+        return True, (f"Closing {label}" if len(matches) == 1
+                      else f"Closing {len(matches)} {label} windows")
+
     def run(self, text):
         """Parse and execute. Returns (ok, feedback)."""
         cmd = parse(text)
@@ -234,7 +349,40 @@ class CommandEngine:
             if arg in SITES:
                 webbrowser.open(SITES[arg])
                 return True, f"Opening {arg.title()}"
-            return False, f'No app called "{arg}" found'
+            # Not installed: send the user to a download page instead.
+            url = DOWNLOADS.get(arg)
+            if url:
+                webbrowser.open(url)
+                return True, (f"{arg.title()} is not installed. "
+                              f"Opening its download page")
+            webbrowser.open("https://www.google.com/search?q="
+                            + _quote(f"download {arg}"))
+            return True, (f'"{arg}" is not installed. Opening a download '
+                          f"search so you can get it")
+
+        if kind == "close_app":
+            return self._close_app(arg)
+
+        if kind == "note":
+            if self.note_saver is None:
+                return False, ("No Obsidian vault is set. Add one in "
+                               "Settings to save notes")
+            return self.note_saver(arg)
+
+        if kind == "booking":
+            webbrowser.open(RESERVATION_SEARCH
+                            + _quote(f"{arg} reservation book a table online"))
+            return True, (f"Opening reservation options for {arg}. "
+                          f"You confirm the booking yourself")
+
+        if kind == "market":
+            webbrowser.open("https://www.google.com/search?q="
+                            + _quote(f"{arg} stock price"))
+            return True, f"Opening market data for {arg}"
+
+        if kind == "lookup":
+            webbrowser.open("https://www.google.com/search?q=" + _quote(arg))
+            return True, f"Looking that up"
 
         if kind == "url":
             arg = arg.replace(" dot ", ".").replace(" ", "")
@@ -329,6 +477,44 @@ class CommandEngine:
 def _quote(s):
     from urllib.parse import quote_plus
     return quote_plus(s)
+
+
+def _enum_windows():
+    """Yield (hwnd, title, exe_basename) for visible top-level windows."""
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    results = []
+    WNDENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def cb(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        title = buf.value
+        if not title:
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        exe = ""
+        # PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = kernel32.OpenProcess(0x1000, False, pid.value)
+        if h:
+            size = wintypes.DWORD(260)
+            path_buf = ctypes.create_unicode_buffer(260)
+            if kernel32.QueryFullProcessImageNameW(
+                    h, 0, path_buf, ctypes.byref(size)):
+                exe = os.path.basename(path_buf.value)
+            kernel32.CloseHandle(h)
+        results.append((hwnd, title, exe))
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(cb), 0)
+    return results
 
 
 def speak(text):

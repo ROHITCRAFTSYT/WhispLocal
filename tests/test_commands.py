@@ -73,6 +73,41 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(kind_arg("Hey, please open notepad"),
                          ("open_app", "notepad"))
 
+    def test_close_app(self):
+        self.assertEqual(kind_arg("close chrome"), ("close_app", "chrome"))
+        self.assertEqual(kind_arg("quit spotify"), ("close_app", "spotify"))
+        self.assertEqual(kind_arg("close notepad"), ("close_app", "notepad"))
+
+    def test_close_window_still_uses_shortcut(self):
+        self.assertEqual(kind_arg("close window"), ("shortcut", "close window"))
+        self.assertEqual(kind_arg("close tab"), ("shortcut", "close tab"))
+
+    def test_note_to_obsidian(self):
+        self.assertEqual(kind_arg("take a note buy milk tomorrow"),
+                         ("note", "buy milk tomorrow"))
+        self.assertEqual(kind_arg("note that the client call is at 4"),
+                         ("note", "the client call is at 4"))
+
+    def test_note_keeps_casing(self):
+        self.assertEqual(kind_arg("Take a note Call Dr. Mehta"),
+                         ("note", "Call Dr. Mehta"))
+
+    def test_booking_opens_page_not_transaction(self):
+        self.assertEqual(kind_arg("book a table at Bukhara"),
+                         ("booking", "bukhara"))
+        self.assertEqual(kind_arg("make a reservation at the taj"),
+                         ("booking", "the taj"))
+
+    def test_market_lookup(self):
+        self.assertEqual(kind_arg("find market data for Tesla"),
+                         ("market", "tesla"))
+        self.assertEqual(kind_arg("stock price of Apple"),
+                         ("market", "apple"))
+
+    def test_general_lookup(self):
+        self.assertEqual(parse("look up the capital of Japan")[0], "lookup")
+        self.assertEqual(parse("tell me about black holes")[0], "lookup")
+
     def test_ordinary_speech_is_not_a_command(self):
         self.assertIsNone(parse("the meeting went well today"))
         self.assertIsNone(parse(""))

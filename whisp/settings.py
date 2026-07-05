@@ -3,7 +3,9 @@ always constructed on the tkinter main thread via Overlay.call()."""
 import json
 import os
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
+
+from overlay import POSITIONS
 
 MODELS = ["tiny", "tiny.en", "base", "base.en", "small", "small.en"]
 LANGUAGES = ["auto", "en", "hi", "es", "fr", "de", "it", "pt", "ru",
@@ -100,6 +102,23 @@ class SettingsWindow:
         self.insert_mode.grid(row=row, column=1, sticky="w", pady=3)
         row += 1
 
+        label("On-screen bar position")
+        self.overlay_pos = ttk.Combobox(
+            f, values=list(POSITIONS), state="readonly", width=24)
+        self.overlay_pos.set(cfg.get("overlay_position", "bottom-center"))
+        self.overlay_pos.grid(row=row, column=1, sticky="w", pady=3)
+        row += 1
+
+        label("Obsidian vault (for notes)")
+        vault_row = ttk.Frame(f)
+        vault_row.grid(row=row, column=1, sticky="w", pady=3)
+        self.vault = ttk.Entry(vault_row, width=32)
+        self.vault.insert(0, cfg.get("obsidian_vault", ""))
+        self.vault.pack(side="left")
+        ttk.Button(vault_row, text="Browse…", width=8,
+                   command=self._pick_vault).pack(side="left", padx=4)
+        row += 1
+
         label("Accuracy (beam size 1–5)")
         self.beam = ttk.Spinbox(f, from_=1, to=5, width=6)
         self.beam.set(cfg.get("beam_size", 2))
@@ -141,6 +160,13 @@ class SettingsWindow:
 
     def _hint(self):
         self.hint.config(text=MODEL_HINTS.get(self.model.get(), ""))
+
+    def _pick_vault(self):
+        path = filedialog.askdirectory(
+            parent=self.win, title="Select your Obsidian vault folder")
+        if path:
+            self.vault.delete(0, "end")
+            self.vault.insert(0, os.path.normpath(path))
 
     def save(self):
         import keyboard
@@ -188,6 +214,8 @@ class SettingsWindow:
             "translate_hotkey": tr_hotkey,
             "command_hotkey": cmd_hotkey,
             "insert_mode": self.insert_mode.get(),
+            "overlay_position": self.overlay_pos.get(),
+            "obsidian_vault": self.vault.get().strip(),
             "beam_size": max(1, min(5, int(self.beam.get() or 2))),
             "dictionary": dictionary,
         })
