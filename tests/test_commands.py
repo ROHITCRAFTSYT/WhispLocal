@@ -141,6 +141,23 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(kind_arg("focus the spotify window"),
                          ("switch", "spotify"))
 
+    def test_list_windows_and_help(self):
+        self.assertEqual(parse("what's open")[0], "list_windows")
+        self.assertEqual(parse("list open windows")[0], "list_windows")
+        self.assertEqual(parse("help")[0], "help")
+        self.assertEqual(parse("what can you do")[0], "help")
+
+    def test_youtube_search_phrasings(self):
+        self.assertEqual(kind_arg("search youtube for lofi beats"),
+                         ("youtube", "lofi beats"))
+        self.assertEqual(kind_arg("search cats on youtube"),
+                         ("youtube", "cats"))
+
+    def test_volume_phrasings(self):
+        self.assertEqual(kind_arg("louder"), ("volume", "up"))
+        self.assertEqual(kind_arg("quieter"), ("volume", "down"))
+        self.assertEqual(kind_arg("turn it up"), ("volume", "up"))
+
     def test_play_music_variants(self):
         self.assertEqual(kind_arg("play some music"), ("play_music", ("", None)))
         self.assertEqual(kind_arg("play music"), ("play_music", ("", None)))
