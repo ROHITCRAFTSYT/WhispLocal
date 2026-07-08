@@ -277,6 +277,10 @@ def parse(text):
         return ("shutdown", None, None)
     if re.match(r"cancel (?:the\s+)?shut\s?down", t):
         return ("cancel_shutdown", None, None)
+    if re.match(r"(?:what(?:'s| is)\s+open|list (?:open )?windows|"
+                r"what windows are open|what apps are open|show open windows)", t):
+        return ("list_windows", None, None)
+
     if re.match(r"(?:what do you know about me|update my profile|"
                 r"save my profile|show my profile|"
                 r"what have you learned about me)", t):
@@ -647,6 +651,20 @@ class CommandEngine:
             if self.profile_saver is None:
                 return False, "Learning is not available right now"
             return self.profile_saver()
+
+        if kind == "list_windows":
+            seen = []
+            for _hwnd, title, _exe in _enum_windows():
+                tl = title.lower()
+                if any(p in tl for p in _PROTECTED_CLOSE):
+                    continue
+                if title and title not in seen:
+                    seen.append(title)
+            if not seen:
+                return True, "No windows are open"
+            shown = "; ".join(seen[:6])
+            extra = f" and {len(seen) - 6} more" if len(seen) > 6 else ""
+            return True, f"{len(seen)} open: {shown}{extra}"
 
         if kind == "booking":
             webbrowser.open(RESERVATION_SEARCH
