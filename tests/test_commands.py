@@ -170,6 +170,14 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(kind_arg("play"), ("shortcut", "play"))
         self.assertEqual(kind_arg("pause"), ("shortcut", "pause"))
 
+    def test_media_transport(self):
+        self.assertEqual(kind_arg("stop the music"), ("shortcut", "pause"))
+        self.assertEqual(kind_arg("pause music"), ("shortcut", "pause"))
+        self.assertEqual(kind_arg("resume"), ("shortcut", "play"))
+        # "play <song>" must still start playback, not be treated as transport
+        self.assertEqual(kind_arg("play despacito"),
+                         ("play_music", ("despacito", None)))
+
     def test_profile_command(self):
         self.assertEqual(kind_arg("what do you know about me"),
                          ("profile", None))
