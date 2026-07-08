@@ -284,6 +284,10 @@ def parse(text):
         return ("shutdown", None, None)
     if re.match(r"cancel (?:the\s+)?shut\s?down", t):
         return ("cancel_shutdown", None, None)
+    if re.match(r"(?:help|what can you do|what can i say|"
+                r"show commands|list commands)$", t):
+        return ("help", None, None)
+
     if re.match(r"(?:what(?:'s| is)\s+open|list (?:open )?windows|"
                 r"what windows are open|what apps are open|show open windows)", t):
         return ("list_windows", None, None)
@@ -658,6 +662,11 @@ class CommandEngine:
             if self.profile_saver is None:
                 return False, "Learning is not available right now"
             return self.profile_saver()
+
+        if kind == "help":
+            return True, ("Try: open or close an app, switch to a window, "
+                          "play music, search the web, take a note, volume "
+                          "up, take a screenshot, or lock the screen.")
 
         if kind == "list_windows":
             seen = []
