@@ -118,6 +118,11 @@ installer.
 | "close chrome", "quit spotify" | Closes the app gracefully (save prompts still appear) |
 | "play some music" | Opens YouTube Music |
 | "play despacito", "play X on spotify" | Plays the song on YouTube Music or Spotify |
+| "stop the music", "pause music", "resume" | Media transport (play/pause) |
+| "search youtube for lofi", "search cats on youtube" | YouTube results |
+| "louder", "quieter", "turn it up" | Volume control |
+| "what's open", "list windows" | Lists your open windows (spoken) |
+| "help", "what can you do" | Lists what you can say |
 | "search for python tutorials", "look up the capital of Japan" | Web search |
 | "find market data for Tesla", "stock price of Apple" | Opens the market page |
 | "book a table at Bukhara" | Opens reservation options (you confirm it) |

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.9.0 — 2026-07-05
+
+### Added
+- "What's open" / "list windows" reports your open windows out loud.
+- "Help" / "what can you do" lists the main things you can say.
+- "Search YouTube for X" and "search X on YouTube" open YouTube results.
+- Natural volume phrasings: "louder", "quieter", "turn it up/down".
+- Media transport: "stop the music", "pause music", "resume".
+
+### Changed
+- The command pipeline waits briefly for the app index (which now
+  includes Microsoft Store apps) to finish building, so a command issued
+  right after startup no longer misses an installed app.
+
 ## 2.8.0 — 2026-07-05
 
 ### Added
