@@ -232,6 +232,15 @@ def parse(text):
     if m:
         return ("search", m.group(1).strip(), None)
 
+    # Media transport: stop / pause / resume the current playback.
+    if (re.match(r"(?:stop|pause)\s+(?:the\s+)?"
+                 r"(?:music|song|playback|playing|video|audio)$", t)
+            or t in ("stop playing", "pause playing")):
+        return ("shortcut", "pause", None)
+    if re.match(r"(?:resume|unpause|continue)"
+                r"(?:\s+(?:the\s+)?(?:music|song|playback|playing))?$", t):
+        return ("shortcut", "play", None)
+
     # Music: "play X on spotify/youtube", "play some music", "play <song>".
     # (Bare "play"/"pause" stay media keys via SHORTCUTS below.)
     m = re.match(r"(?:play|put on|start playing)\s+(.+?)\s+on\s+"
