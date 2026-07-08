@@ -365,6 +365,9 @@ class App:
             if not text:
                 self.overlay.post("hide")
                 return
+            # Make sure the app index is built before resolving, so a command
+            # right after startup does not miss an installed app.
+            self.commands.wait_ready(3.0)
             ok, feedback = self.commands.run(text)
             log(f"command: {text!r} -> {ok} {feedback!r}")
             self.overlay.post(("message", feedback or "Done", ok))

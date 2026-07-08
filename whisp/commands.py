@@ -337,8 +337,17 @@ class CommandEngine:
         self.profile_saver = profile_saver
         # on_action(kind, arg, ok) -> None; wired by the app to learning.
         self.on_action = on_action
+        # Set once the app index has finished building.
+        self.index_ready = threading.Event()
         if build_index:
             threading.Thread(target=self._build_index, daemon=True).start()
+        else:
+            self.index_ready.set()
+
+    def wait_ready(self, timeout):
+        """Block until the app index is built, so a command issued right
+        after startup does not miss installed apps."""
+        self.index_ready.wait(timeout)
 
     def _repair(self, text):
         """Try to fix a command that did not parse: correct a misheard
@@ -408,6 +417,7 @@ class CommandEngine:
             pass
 
         self.app_index = index
+        self.index_ready.set()
 
     def switch_to(self, term, allow_browser=True):
         """If a window whose title contains `term` is open, focus it and
