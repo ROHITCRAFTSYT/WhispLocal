@@ -30,7 +30,7 @@ from settings import HistoryWindow, SettingsWindow
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.8.0"
+__version__ = "2.9.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
