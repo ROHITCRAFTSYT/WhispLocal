@@ -261,6 +261,12 @@ def parse(text):
     m = re.match(r"(?:volume|turn (?:it|the volume))\s*(up|down)", t)
     if m:
         return ("volume", m.group(1), None)
+    if t in ("louder", "turn it up", "turn up", "increase volume",
+             "increase the volume", "raise the volume"):
+        return ("volume", "up", None)
+    if t in ("quieter", "softer", "turn it down", "turn down",
+             "decrease volume", "decrease the volume", "lower the volume"):
+        return ("volume", "down", None)
 
     m = re.match(r"scroll\s*(up|down)", t)
     if m:
