@@ -221,7 +221,14 @@ def parse(text):
     if m:
         return ("url", m.group(1).strip(), None)
 
-    m = re.match(r"(?:search(?:\s+for)?|google)\s+(.+)", t)
+    m = re.match(r"search\s+youtube\s+for\s+(.+)", t)
+    if m:
+        return ("youtube", m.group(1).strip(), None)
+    m = re.match(r"search\s+(?:for\s+)?(.+?)\s+on\s+youtube$", t)
+    if m:
+        return ("youtube", m.group(1).strip(), None)
+
+    m = re.match(r"(?:search(?:\s+for)?|google|look for)\s+(.+)", t)
     if m:
         return ("search", m.group(1).strip(), None)
 
