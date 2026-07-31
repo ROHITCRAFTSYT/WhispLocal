@@ -14,6 +14,15 @@ _FILLER_RE = re.compile(
 
 
 def clean(text, config):
+    """Clean up raw transcription text and return the polished string.
+
+    Applies, gated by ``config`` flags: filler-word removal
+    (``remove_fillers``, default on), custom find/replace via ``dictionary``,
+    whitespace/punctuation-spacing normalization (always), first-letter and
+    sentence-start capitalization (``capitalize_first``, default on), and
+    optional trailing-period stripping (``strip_trailing_period``). Empty
+    input is returned unchanged.
+    """
     if not text:
         return text
 
