@@ -29,6 +29,13 @@ SCRIPT_PRIMERS = {
 
 
 class Transcriber:
+    """Lazily-loaded faster-whisper wrapper.
+
+    Holds decode settings (model, language, beam size, CPU threads) from
+    ``config`` and loads the model on first use behind a lock so concurrent
+    callers share a single instance.
+    """
+
     def __init__(self, config):
         self.model_name = config.get("model", "base")
         self.language = config.get("language") or None  # None = auto-detect
