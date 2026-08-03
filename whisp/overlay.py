@@ -40,6 +40,9 @@ def _lerp_color(c1, c2, t):
 
 class Overlay:
     W, H = 340, 54
+    # Messages wrap onto extra lines; each line adds this much height.
+    LINE_H = 20
+    MAX_LINES = 3
 
     def __init__(self, get_levels=None, position="bottom-center"):
         self.get_levels = get_levels or (lambda: [])
@@ -49,6 +52,7 @@ class Overlay:
         self._hide_job = None
         self._anim_job = None
         self._tick = 0
+        self._height = self.H
 
         self.root = tk.Tk()
         self.root.withdraw()
@@ -81,10 +85,30 @@ class Overlay:
             self.call(self._place)
 
     # ----- geometry -------------------------------------------------------
+    def _wrap(self, text, max_chars=42):
+        """Split message text into display lines at word boundaries."""
+        lines = []
+        for para in text.split("\n") or [""]:
+            if not para:
+                lines.append("")
+                continue
+            while len(para) > max_chars:
+                cut = para.rfind(" ", 0, max_chars + 1)
+                if cut <= 0:
+                    cut = max_chars
+                lines.append(para[:cut].rstrip())
+                para = para[cut:].lstrip()
+            lines.append(para)
+        if len(lines) > self.MAX_LINES:
+            # Too long for the pill — keep the last line and say so.
+            lines = lines[: self.MAX_LINES]
+            lines[-1] = lines[-1].rstrip() + "…"
+        return lines
+
     def _place(self):
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        w, h = self.W, self.H
+        w, h = self.W, self._height
         mx, my_top, my_bot = 40, 60, 70
         pos = self.position
         if "left" in pos:
@@ -131,6 +155,13 @@ class Overlay:
         if state == "hide":
             self.root.withdraw()
             return
+        if isinstance(state, tuple) and state[0] == "message":
+            # Grow the pill so multi-line messages fit without truncation.
+            n = len(self._wrap(state[1]))
+            self._height = self.H + (n - 1) * self.LINE_H
+        else:
+            self._height = self.H
+        self.canvas.configure(height=self._height)
         self._place()
         self.root.deiconify()
         self._tick = 0
@@ -141,7 +172,7 @@ class Overlay:
 
     # ----- drawing --------------------------------------------------------
     def _pill(self):
-        c, w, h = self.canvas, self.W, self.H
+        c, w, h = self.canvas, self.W, self._height
         c.delete("all")
         r = h // 2
         # Two-tone body: a darker edge ring under a lighter face for depth.
@@ -155,16 +186,18 @@ class Overlay:
 
     def _draw(self):
         self._pill()
-        c, w, h = self.canvas, self.W, self.H
+        c, w, h = self.canvas, self.W, self._height
         st = self.state
 
         if isinstance(st, tuple) and st[0] == "message":
             _, text, ok = st
-            if len(text) > 44:
-                text = text[:43] + "…"
-            c.create_text(w // 2, h // 2, text=text,
-                          font=("Segoe UI", 11, "bold"),
-                          fill="#50fa7b" if ok else "#ff5555")
+            lines = self._wrap(text)
+            total = len(lines) * self.LINE_H
+            y0 = (h - total) // 2 + self.LINE_H // 2
+            for i, line in enumerate(lines):
+                c.create_text(w // 2, y0 + i * self.LINE_H, text=line,
+                              font=("Segoe UI", 11, "bold"),
+                              fill="#50fa7b" if ok else "#ff5555")
             return
 
         if st in ("recording", "locked", "recording_translate",

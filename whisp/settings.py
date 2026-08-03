@@ -2,6 +2,7 @@
 always constructed on the tkinter main thread via Overlay.call()."""
 import json
 import os
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -68,9 +69,18 @@ class SettingsWindow:
             devices += list_input_devices()
         except Exception:
             pass
-        self.mic = ttk.Combobox(f, values=devices, state="readonly", width=40)
+        mic_row = ttk.Frame(f)
+        mic_row.grid(row=row, column=1, sticky="w", pady=3)
+        self.mic = ttk.Combobox(mic_row, values=devices, state="readonly",
+                                width=34)
         self.mic.set(cfg.get("input_device") or "System default")
-        self.mic.grid(row=row, column=1, sticky="w", pady=3)
+        self.mic.pack(side="left")
+        self.scan_button = ttk.Button(mic_row, text="Scan for best…",
+                                      width=13, command=self._scan_mic)
+        self.scan_button.pack(side="left", padx=(6, 0))
+        row += 1
+        self.scan_status = ttk.Label(f, foreground="#666")
+        self.scan_status.grid(row=row, column=1, sticky="w")
         row += 1
 
         label("Dictation hotkey")
@@ -125,16 +135,42 @@ class SettingsWindow:
         self.beam.grid(row=row, column=1, sticky="w", pady=3)
         row += 1
 
+        # Optional local-LLM fallback for genuinely novel commands. Off by
+        # default; a GGUF file (llama.cpp) or an ONNX model folder turns it
+        # on. It only runs after every fast pattern match fails, on a
+        # background thread, so reply latency is untouched.
+        label("Local LLM fallback model")
+        llm_row = ttk.Frame(f)
+        llm_row.grid(row=row, column=1, sticky="w", pady=3)
+        self.llm_path = ttk.Entry(llm_row, width=30)
+        self.llm_path.insert(0, cfg.get("llm_model_path", ""))
+        self.llm_path.pack(side="left")
+        ttk.Button(llm_row, text="Browse…", width=8,
+                   command=self._pick_llm).pack(side="left", padx=4)
+        ttk.Button(llm_row, text="Test", width=6,
+                   command=self._test_llm).pack(side="left", padx=4)
+        row += 1
+        self.llm_status = ttk.Label(
+            f, foreground="#666",
+            text="(optional) GGUF for llama.cpp, or an ONNX model folder")
+        self.llm_status.grid(row=row, column=1, sticky="w")
+        row += 1
+
         self.flags = {}
         for key, text, default in [
             ("remove_fillers", "Remove filler words (um, uh…)", True),
             ("capitalize_first", "Auto-capitalize sentences", True),
             ("strip_trailing_period", "Strip trailing period (chat style)", False),
             ("sound_cues", "Sound cues on start/stop", True),
+            ("auto_select_mic",
+             "Auto-select a working microphone at startup", True),
             ("save_history", "Save dictation history", True),
             ("restore_clipboard", "Restore clipboard after paste", True),
             ("adaptive_learning",
              "Learn my vocabulary and languages (stored locally)", True),
+            ("llm_enabled",
+             "Use the local LLM for commands I don't recognize yet (offline)",
+             False),
             ("voice_replies", "Speak confirmations in voice control mode", True),
         ]:
             var = tk.BooleanVar(value=bool(cfg.get(key, default)))
@@ -160,6 +196,73 @@ class SettingsWindow:
 
     def _hint(self):
         self.hint.config(text=MODEL_HINTS.get(self.model.get(), ""))
+
+    def _scan_mic(self):
+        """Probe every input device off the UI thread and offer the first
+        working one. Results are marshaled back onto the tkinter thread
+        via the app's overlay queue (the codebase's thread-safe pattern)."""
+        from audio import scan_mics
+        self.scan_button.config(state="disabled", text="Scanning…")
+        self.scan_status.config(text="Probing input devices… (a few seconds)",
+                                foreground="#666")
+
+        def _run():
+            # scan_mics() runs on this worker thread; the result is
+            # marshaled to the tkinter thread via the overlay queue.
+            name = scan_mics()
+            self.app.overlay.call(lambda: self._scan_done(name))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _scan_done(self, name):
+        # The window may have been closed while the scan ran — never touch
+        # dead widgets, or tkinter raises TclError inside its main loop.
+        if not self.win.winfo_exists():
+            return
+        self.scan_button.config(state="normal", text="Scan for best…")
+        self.scan_status.config(
+            text=(f"Selected: {name} (press Save to apply)" if name else
+                  "No working mic found — check Windows mic privacy"),
+            foreground="#2a7" if name else "#c44")
+        if name:
+            self.mic.set(name)
+
+    def _pick_llm(self):
+        path = filedialog.askopenfilename(
+            parent=self.win, title="Select a local LLM model",
+            filetypes=[("GGUF model", "*.gguf"),
+                       ("ONNX model", "*.onnx"),
+                       ("All files", "*.*")])
+        if path:
+            self.llm_path.delete(0, "end")
+            self.llm_path.insert(0, os.path.normpath(path))
+            self._test_llm()
+
+    def _test_llm(self):
+        """Load the configured model off the UI thread and report the
+        result — the same thread-safe pattern as the mic scan."""
+        from locallm import LocalLLM
+        path = self.llm_path.get().strip()
+        if not path:
+            self.llm_status.config(text="Enter a model path first.",
+                                   foreground="#c44")
+            return
+        self.llm_status.config(text="Loading model… (may take a moment)",
+                               foreground="#666")
+
+        def _run():
+            llm = LocalLLM(path)
+            llm.load()  # force the lazy load so the status is truthful
+            self.app.overlay.call(lambda: self._llm_done(llm))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _llm_done(self, llm):
+        if not self.win.winfo_exists():
+            return
+        ok = llm.healthy()
+        self.llm_status.config(text=llm.describe(),
+                               foreground="#2a7" if ok else "#c44")
 
     def _pick_vault(self):
         path = filedialog.askdirectory(
@@ -217,6 +320,7 @@ class SettingsWindow:
             "overlay_position": self.overlay_pos.get(),
             "obsidian_vault": self.vault.get().strip(),
             "beam_size": max(1, min(5, int(self.beam.get() or 2))),
+            "llm_model_path": self.llm_path.get().strip(),
             "dictionary": dictionary,
         })
         for key, var in self.flags.items():
@@ -275,7 +379,14 @@ class HistoryWindow:
         if not sel:
             self.status.config(text="Select a dictation first.")
             return
-        original = self.entries[sel[0]].get("text", "")
+        entry = self.entries[sel[0]]
+        original = entry.get("text", "")
+        task = entry.get("task", "transcribe")
+        # Command entries store "heard -> feedback"; the user wants to fix
+        # the heard phrase, not the result note.
+        if task == "command":
+            from commands import heard_part
+            original = heard_part(original)
         dlg = tk.Toplevel(self.win)
         dlg.title("Teach a correction")
         dlg.attributes("-topmost", True)
@@ -291,10 +402,15 @@ class HistoryWindow:
 
         def save():
             corrected = box.get("1.0", "end").strip()
-            n = self.app.teach_correction(original, corrected)
-            self.status.config(
-                text=f"Learned {n} correction(s)." if n else
-                "No word-level changes found to learn.")
+            n = self.app.teach_correction(original, corrected, task=task)
+            if task == "command":
+                self.status.config(
+                    text=(f"Learned: {corrected} will now work." if n else
+                          "No new phrase to learn."))
+            else:
+                self.status.config(
+                    text=f"Learned {n} correction(s)." if n else
+                    "No word-level changes found to learn.")
             dlg.destroy()
 
         btns = ttk.Frame(f)

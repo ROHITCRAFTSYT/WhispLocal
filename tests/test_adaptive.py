@@ -82,6 +82,57 @@ class AdaptiveTests(unittest.TestCase):
         self.assertEqual(reloaded.command_total, 1)
         self.assertEqual(reloaded.app_counts["obsidian"], 1)
 
+    def test_learns_command_phrases(self):
+        n = self.a.learn_command("open chrom", "open chrome")
+        self.assertEqual(n, 1)
+        self.assertEqual(self.a.command_phrases(),
+                         {"open chrom": "open chrome"})
+
+    def test_command_phrase_noop_when_identical(self):
+        self.assertEqual(self.a.learn_command("open chrome", "open chrome"),
+                         0)
+        self.assertEqual(self.a.learn_command("  ", "open chrome"), 0)
+
+    def test_command_phrases_persist(self):
+        self.a.learn_command("open chrom", "open chrome")
+        reloaded = Adaptive(self.dir)
+        self.assertEqual(reloaded.command_phrases(),
+                         {"open chrom": "open chrome"})
+
+    def test_corrected_command_words_become_hotwords(self):
+        self.a.learn_command("open notepd", "open notepad")
+        self.assertIn("notepad", self.a.hotwords())
+
+    def test_command_phrase_counts_in_profile(self):
+        self.a.learn_command("open chrom", "open chrome")
+        self.assertEqual(
+            self.a.profile_summary()["learned_command_phrases"], 1)
+
+    def test_command_phrase_map_is_capped(self):
+        # The engine fuzzy-matches against every learned key on every
+        # command, so the map must not grow without bound. Oldest entries
+        # drop first; the most recently taught survive.
+        from adaptive import MAX_LEARNED
+        for i in range(MAX_LEARNED + 10):
+            self.a.learn_command(f"open phrase {i}", f"open app {i}")
+        phrases = self.a.command_phrases()
+        self.assertEqual(len(phrases), MAX_LEARNED)
+        self.assertNotIn("open phrase 0", phrases)
+        self.assertIn(f"open phrase {MAX_LEARNED + 9}", phrases)
+
+    def test_reteaching_moves_phrase_to_freshest_slot(self):
+        # Re-teaching a phrase must not let it age out of the cap.
+        from adaptive import MAX_LEARNED
+        for i in range(MAX_LEARNED):
+            self.a.learn_command(f"open phrase {i}", f"open app {i}")
+        self.a.learn_command("open phrase 0", "open app 0")  # re-teach oldest
+        self.a.learn_command("brand new phrase", "open app new")
+        phrases = self.a.command_phrases()
+        self.assertEqual(len(phrases), MAX_LEARNED)
+        # The re-taught phrase survived; the next-oldest fell off.
+        self.assertIn("open phrase 0", phrases)
+        self.assertNotIn("open phrase 1", phrases)
+
     def test_app_names_become_hotwords(self):
         for _ in range(3):
             self.a.record_command("open_app", label="discord")

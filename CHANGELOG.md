@@ -1,5 +1,268 @@
 # Changelog
 
+## 2.22.0 — 2026-08-03
+
+### Fixed
+- "Search mr beast in youtube" can no longer open a Google search for
+  the whole phrase "mr. beast in youtube" under ANY whisper phrasing.
+  The YouTube search grammar now accepts every way speech-to-text can
+  phrase it: "google X in youtube", "look for X on youtube", "look up
+  X in youtube", "find X in youtube", "show me X in youtube", "in
+  the youtube", "in youtube app", "in youtube.com", "you tube" split
+  into two words, the short "yt", inverted "search in youtube X",
+  "open youtube search X" (whisper drops the "and"), and even a bare
+  "X in youtube" with the verb dropped (resolved via the fuzzy path).
+  All open YouTube results directly; none can fall through to Google.
+- "You tube" written as two words is now rejoined during normalization,
+  so every youtube intent (open, search, play) sees the canonical token.
+
+## 2.21.0 — 2026-08-02
+
+### Fixed
+- "Volume set to X%" no longer announces a change that never happened.
+  The old implementation used winmm's waveOutSetVolume, which only
+  drives the legacy WAVE_MAPPER device — on modern Windows that is often
+  not the endpoint you actually hear, so the call could return success
+  while the audible volume stayed put. Exact levels and "increase/
+  decrease volume by N%" now use the Windows Core Audio API
+  (IAudioEndpointVolume) — the same control the volume flyout uses — and
+  verify the change by reading the level back afterwards. If the volume
+  did not actually move (endpoint missing, device rejecting the change,
+  read-back not confirming), the app says so instead of claiming success.
+- Volume is read back from the real endpoint too, so "increase volume
+  by 20%" computes the delta from the level you actually hear, not the
+  legacy wave device's.
+
+## 2.20.0 — 2026-08-02
+
+### Fixed
+- "Search mr beast in youtube" no longer falls through to a bare Google
+  search for the whole phrase "mr. beast in youtube". The YouTube
+  search grammar now accepts whisper's "in youtube" (not just "on
+  youtube"), plus "search in/on youtube for X" and "youtube search X"
+  — all open YouTube results directly. The fuzzy fallback and the
+  local-LLM prompt know these phrasings too.
+
+## 2.19.0 — 2026-08-02
+
+### Added
+- Percentage volume changes: "increase volume by 20%", "lower the
+  volume by 15", "volume up by 5%", "make it louder by 10%" — and the
+  gerund forms whisper often produces ("increasing volume by 20%"). The
+  current level is read via winmm and the delta is applied and clamped
+  to 0-100, so the new level is real, not guessed.
+- The same relative "by N" support for brightness: "increase brightness
+  by 20%", "brightness down by 10".
+
+### Fixed
+- "Did not understand: increasing volume by 20%" no longer happens —
+  that exact phrasing (and its siblings) now adjusts the volume.
+
+## 2.18.0 — 2026-08-02
+
+### Fixed
+- "Open youtube and search for mr beast" no longer opens a mangled URL
+  like `youtubeandsearchformr.beast`. The root cause was threefold:
+  whisper's comma transcription ("open youtube, search for mr. beast")
+  was not recognized as a compound sentence, so the whole phrase fell
+  through to the generic "open" pattern; the period in "Mr." then made
+  it look like a URL; and the URL executor stripped ALL spaces to build
+  a domain. Compound splitting now handles commas (with or without a
+  space before them), "and then", and "&"; a target with spaces is
+  never treated as a URL; and a phrase that still reaches the URL path
+  becomes a web search instead of a mangled address.
+- Compound sentences now chain: "open youtube and search for mr beast"
+  opens YouTube AND searches YouTube for the query (not a bare Google
+  search). Works for youtube, google, amazon, flipkart, spotify, reddit,
+  github, wikipedia, stack overflow, maps, and bing.
+
+### Added
+- Successful repairs are now remembered: if the engine fixes a misheard
+  command (e.g. "oben chrome" -> "open chrome") and it works, the
+  correction is learned via the same phrase-learning path, so the exact
+  same mishearing resolves instantly next time.
+- The local-LLM prompt now includes compound and "search X on youtube"
+  examples so novel phrasings of these still resolve.
+
+## 2.17.0 — 2026-08-02
+
+### Added
+- Natural volume control: "lower my computer's volume", "raise the
+  volume", "set volume to 30", "volume 50 percent", "max/min volume",
+  "mute/unmute" — the phrasings that previously answered "not
+  understood" now actually change the system volume. Exact levels set
+  the volume via winmm (no extra dependencies).
+- Screen brightness: "brightness up/down", "set brightness to 50",
+  "make it brighter/darker". Works on WMI-capable displays (typically
+  laptops) and reports when it cannot.
+- More computer tasks that used to be "not understood": "restart the
+  computer" (delayed 60 s and cancellable like shutdown), "sleep",
+  "hibernate", "check battery" (reports the charge level), "turn off
+  the display" (blanks the screen; any key wakes it).
+- Voice-reachable Windows Settings pages: "open wifi settings", "open
+  bluetooth settings", "open display settings", "open night light
+  settings", "open sound settings", and more, via ms-settings: URIs.
+- The local-LLM fallback prompt now knows the new canonical commands
+  (volume levels, brightness, battery, restart…), so novel phrasings of
+  these still resolve through it.
+
+## 2.16.0 — 2026-08-02
+
+### Added
+- Optional local-LLM fallback for genuinely novel commands. When every
+  fast pattern match fails, the app can ask a local model (llama.cpp GGUF
+  via llama-cpp-python, or an ONNX text-generation folder) to restate the
+  phrase as a known command. Off by default; configure a model path in
+  Settings (with a Test button) and enable the checkbox.
+- The fallback cannot add latency: the model runs only after every fast
+  path (learned phrases, parse, repair, fuzzy suggest) has failed, on a
+  background thread with a timeout — the immediate reply is not held up.
+  The model's answer must itself parse as a known command before anything
+  runs, so it cannot gain powers the pattern matcher does not have, and
+  nothing is ever sent off the machine.
+- Successful resolutions are learned as phrases, so the same sentence is
+  answered instantly from then on (no model call).
+
+## 2.15.0 — 2026-08-02
+
+### Added
+- The brain learns from History corrections. When you correct a voice
+  command that was misunderstood (e.g. "open chrom" → "open chrome"),
+  the heard phrase is stored and resolved automatically next time —
+  exactly, or fuzzy-close ("open chrrm"). Command corrections are
+  detected in the History window and taught as whole phrases (heard →
+  corrected), separate from dictation's word-level corrections.
+- Learned phrases persist in adaptive.json, survive restarts, count
+  toward the learning profile, and their words become transcription
+  hotwords so the phrase is heard correctly in the first place.
+- The History correction dialog now shows only the heard command (not
+  its result note) and confirms "…will now work" for commands.
+
+## 2.14.0 — 2026-08-02
+
+### Added
+- "Order X from Y" commands for any site you name: "order monster from
+  instamart", "buy milk on blinkit", "add monster to my cart on amazon".
+  Known ordering sites get a deep link straight to their product search
+  with your item pre-filled (Amazon, Flipkart, BigBasket, Instamart/
+  Swiggy, Blinkit, Zepto, Meesho, JioMart), and any other site falls
+  back to a web search — so the phrase always lands somewhere useful.
+  Compound orders work too: "order monster from instamart and red bull
+  from blinkit" opens both.
+- The site you name is learned in your profile (Settings → learning),
+  so ambiguous mentions resolve to the site you use most.
+
+### Guardrail
+- Consistent with the app's no-autonomous-transactions rule, ordering
+  opens the product search page and stops there — the item is one tap
+  from your cart, but WhispLocal never clicks checkout or submits an
+  order. See GUARDRAILS.md.
+
+## 2.13.0 — 2026-08-02
+
+### Added
+- A smarter command brain that understands more of what you actually say,
+  instead of answering "Did not understand":
+  - Compound commands: "switch tab and open settings" now runs both
+    actions (previously rejected as a single unknown phrase). "Open
+    notepad and open paint" launches both apps, and a bare noun inherits
+    the verb ("open paint and notepad" opens both); "take a note buy
+    milk and eggs" is still one note.
+  - Tab navigation: "switch tab", "next tab", "previous tab", "go back
+    a tab", "switch to tab 3" (Ctrl+1..9), "switch to the last tab".
+  - "Open settings" now opens WhispLocal's own Settings window (the
+    assistant's settings); "open windows/system settings" still opens
+    Windows Settings.
+  - "Open a new tab" and "close this tab" are recognized shortcuts.
+- Fuzzy fallback instead of a blind refusal: unparseable phrases are
+  matched to the closest known command ("switch to the next tab please"
+  lands on tab switching), and truly unknown ones get a helpful reply
+  listing real commands rather than a flat rejection.
+
+### Performance
+- The brain is pure string matching (precompiled regex + dict lookups,
+  no I/O, no network, no model) and runs on the already-backgrounded
+  command thread — a latency test parses ~24 phrases in well under
+  50 ms, so the reply path is unchanged.
+
+## 2.12.0 — 2026-08-02
+
+### Added
+- Automatic microphone selection: at startup the app now probes every
+  input device with a short recording and picks the first one that
+  delivers real audio (above the silence threshold) instead of trusting
+  the system default — which can be a dead port or a muted device. The
+  chosen mic is saved to Settings, and a new "Scan for best…" button in
+  Settings re-runs the scan on demand. Toggle with the
+  "Auto-select a working microphone at startup" option.
+- `scan_mics()` in the audio module (used by both the startup scan and
+  the Settings button); `mic_test.py --all` now reuses the same device
+  filtering so the diagnostic and the app always agree.
+
+### Fixed
+- The auto-select scan never overrides a microphone the user chose
+  manually, and never blocks startup — it runs in the background while
+  the model loads.
+
+## 2.11.0 — 2026-08-02
+
+### Fixed
+- Voice not being heard at all: the recorder previously demanded 16 kHz
+  from the mic, which many Windows devices refuse (USB headsets, built-in
+  arrays often only do 44.1/48 kHz). It now falls back to the device's
+  native rate and resamples to 16 kHz for Whisper.
+- A configured microphone name that no longer matches any device (it was
+  renamed or unplugged) no longer fails every recording — it falls back
+  to the system default.
+- If the mic delivers no signal at all (muted, wrong device, or Windows
+  privacy blocking access), the overlay now says "No voice detected — is
+  the mic on?" instead of silently doing nothing, and the reason is
+  logged to whisp.log.
+- Microphone failures now log the full traceback and show a clear overlay
+  message pointing at Settings → Microphone and Windows privacy.
+- A failed stream open no longer leaves the recorder in a dead state —
+  the next hotkey press retries instead of silently doing nothing until
+  restart.
+- Overlay messages wrap onto up to three lines instead of being cut off
+  mid-sentence, so mic diagnostics stay fully readable.
+- `rms()` treats NaN/inf levels as silence, so broken or loopback devices
+  can never masquerade as a working mic.
+
+### Added
+- `mic_test.py`: a diagnostic that lists your input devices, records
+  2 seconds from any of them, and prints the measured signal level — run
+  it to see whether the mic works and at which sample rate.
+- `mic_test.py --all` scans every microphone (skipping speakers and
+  loopbacks) and names the best working device to pick in Settings.
+
+## 2.10.0 — 2026-08-02
+
+### Fixed
+- Recording no longer loses the tail of your speech: the audio callback
+  now synchronizes with stop(), and the frame list is swapped atomically
+  instead of being cleared under the recorder thread.
+- Two quick dictations can no longer interleave. Transcription runs are
+  serialized, so a new clip never hits the model while the previous one
+  is still inserting text.
+- Hotwords (Claude, GitHub, your learned vocabulary…) are no longer
+  dropped for Hindi, Bengali, Tamil and other primer languages; they are
+  folded into the recognition prompt so names still transcribe correctly.
+- "Take a note …" after a polite prefix ("please take a note …") no
+  longer garbles the note body — the body is extracted from the original
+  text, keeping your casing.
+- "Press the escape key", "hit the enter key" and similar phrasings now
+  work instead of being rejected as unparseable.
+- "Turn up the volume" / "turn down the volume" are recognized.
+- Closing an app no longer closes a whole browser window when the name
+  only appears in a tab title ("close notepad" with a Notepad tab open
+  in Chrome now closes Notepad, not Chrome). The browser itself is still
+  closable ("close chrome").
+- "Open chrome" (or any browser) now focuses the open browser window
+  instead of launching a second instance, while still ignoring browser
+  tabs that merely mention another app's name.
+- Clipboard failures during insert now fall back to simulated typing
+  instead of silently dropping the dictation.
+
 ## 2.9.0 — 2026-07-05
 
 ### Added

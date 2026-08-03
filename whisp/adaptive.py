@@ -25,6 +25,10 @@ FILE_NAME = "adaptive.json"
 MAX_WORDS = 800
 HOTWORD_COUNT = 40
 MIN_OCCURRENCES = 3
+# Learned command phrases are capped so the engine's fuzzy _learned pass
+# (which runs against every key on every command) stays microseconds-fast.
+# Oldest entries are dropped first; re-taught phrases move to the front.
+MAX_LEARNED = 100
 
 # Common words that would waste hotword slots.
 STOPWORDS = frozenset("""
@@ -61,6 +65,10 @@ class Adaptive:
         self.word_counts = Counter()
         self.lang_counts = Counter()
         self.learned_dictionary = {}
+        # heard command phrase -> corrected command phrase, taught through
+        # the History window. Used by the command engine to resolve a
+        # phrase the parser previously failed on.
+        self.learned_commands = {}
         self.action_counts = Counter()   # kind of command -> count
         self.app_counts = Counter()      # app opened/closed -> count
         self.topic_counts = Counter()    # search/lookup topics -> count
@@ -75,6 +83,7 @@ class Adaptive:
             self.word_counts = Counter(data.get("word_counts", {}))
             self.lang_counts = Counter(data.get("lang_counts", {}))
             self.learned_dictionary = data.get("learned_dictionary", {})
+            self.learned_commands = data.get("learned_commands", {})
             self.action_counts = Counter(data.get("action_counts", {}))
             self.app_counts = Counter(data.get("app_counts", {}))
             self.topic_counts = Counter(data.get("topic_counts", {}))
@@ -87,6 +96,7 @@ class Adaptive:
             "word_counts": dict(self.word_counts),
             "lang_counts": dict(self.lang_counts),
             "learned_dictionary": self.learned_dictionary,
+            "learned_commands": self.learned_commands,
             "action_counts": dict(self.action_counts),
             "app_counts": dict(self.app_counts),
             "topic_counts": dict(self.topic_counts),
@@ -144,6 +154,42 @@ class Adaptive:
                 self._save()
         return learned
 
+    def learn_command(self, heard, corrected):
+        """Teach that a phrase the command engine failed to understand
+        actually means the corrected command phrase, so the next time the
+        user says it, it resolves. Returns 1 when a phrase was learned,
+        0 when there was nothing new."""
+        heard = (heard or "").strip()
+        corrected = (corrected or "").strip()
+        if not heard or not corrected or heard == corrected:
+            return 0
+        key = heard.lower()
+        with self._lock:
+            # Re-teaching moves the key to the newest slot — even when the
+            # mapping is unchanged — so a phrase the user re-confirms does
+            # not age out of the cap. Dicts keep insertion order, and the
+            # order is persisted to adaptive.json, so freshness survives
+            # restarts. A genuinely new mapping also bumps hotwords and is
+            # reported as learned (return 1).
+            known = self.learned_commands.pop(key, None)
+            self.learned_commands[key] = corrected
+            while len(self.learned_commands) > MAX_LEARNED:
+                self.learned_commands.pop(next(iter(self.learned_commands)))
+            if known == corrected:
+                self._save()   # persist the refreshed order
+                return 0
+            # Corrected command words become hotwords too, so the next
+            # utterance of the phrase transcribes more reliably.
+            for word in _tokenize(corrected):
+                self.word_counts[word.lower()] += 5
+            self._save()
+        return 1
+
+    def command_phrases(self):
+        """The heard -> corrected command map taught via History."""
+        with self._lock:
+            return dict(self.learned_commands)
+
     def record_command(self, kind, label=None, topic=None):
         """Called after each executed voice command, to learn habits."""
         if not self.enabled:
@@ -173,6 +219,7 @@ class Adaptive:
                 "top_actions": self.action_counts.most_common(10),
                 "top_topics": self.topic_counts.most_common(12),
                 "corrections": dict(self.learned_dictionary),
+                "learned_command_phrases": len(self.learned_commands),
                 "vocabulary_size": len(self.word_counts),
             }
 

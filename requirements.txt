@@ -5,3 +5,10 @@ keyboard==0.13.5
 pyperclip==1.11.0
 pystray==0.19.5
 Pillow==12.3.0
+
+# Optional — local LLM fallback for novel voice commands (Settings →
+# "Local LLM fallback model"). Installed lazily, only when you configure
+# a model; the app works fine without them.
+# llama-cpp-python>=0.2.0   # GGUF models (.gguf)
+# onnxruntime>=1.17.0       # ONNX text-generation models (.onnx)
+# transformers>=4.38.0      # tokenizer for the ONNX backend

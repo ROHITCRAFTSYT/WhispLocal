@@ -6,3 +6,4 @@ adaptive.json
 whisp.log
 config.json
 *.wav
+.freebuff/

@@ -74,15 +74,21 @@ class Transcriber:
         # Always include the built-in proper-noun hints so names like
         # "Claude" are not heard as "cloud".
         effective_hotwords = (DEFAULT_HOTWORDS + " " + (hotwords or "")).strip()
+        if primer:
+            # faster-whisper drops the hotwords parameter when a prompt is
+            # set, so fold the hints into the prompt text itself. Names
+            # still transcribe correctly even in script-primer languages.
+            prompt = primer + "\n" + effective_hotwords
+            initial_prompt, hotwords_kw = prompt, None
+        else:
+            initial_prompt, hotwords_kw = None, effective_hotwords or None
         segments, info = model.transcribe(
             audio,
             task=task,
             language=lang,
             beam_size=self.beam_size,
-            # faster-whisper ignores hotwords when initial_prompt is set,
-            # so pass whichever applies.
-            initial_prompt=primer,
-            hotwords=None if primer else effective_hotwords,
+            initial_prompt=initial_prompt,
+            hotwords=hotwords_kw,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 400},
             condition_on_previous_text=False,

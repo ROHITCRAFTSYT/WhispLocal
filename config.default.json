@@ -9,6 +9,7 @@
   "beam_size": 2,
   "cpu_threads": 0,
   "input_device": null,
+  "auto_select_mic": true,
   "insert_mode": "paste",
   "overlay_position": "bottom-center",
   "obsidian_vault": "",
@@ -19,5 +20,7 @@
   "sound_cues": true,
   "save_history": true,
   "adaptive_learning": true,
+  "llm_enabled": false,
+  "llm_model_path": "",
   "dictionary": {}
 }

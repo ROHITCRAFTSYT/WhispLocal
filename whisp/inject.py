@@ -27,7 +27,13 @@ def insert(text, config):
     except Exception:
         pass
 
-    pyperclip.copy(text)
+    try:
+        pyperclip.copy(text)
+    except Exception:
+        # Clipboard unavailable (locked by another app): fall back to
+        # simulated typing rather than silently dropping the dictation.
+        keyboard.write(text, delay=0.005, exact=True)
+        return
     time.sleep(0.05)
     keyboard.send("ctrl+v")
 
