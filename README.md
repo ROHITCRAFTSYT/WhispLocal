@@ -20,7 +20,7 @@ recognition runs on your CPU, so nothing you say or do is uploaded.
   <img src="docs/waveform.gif" alt="Recording indicator with a live waveform" width="360">
 </p>
 
-## Two modes
+## Modes
 
 <p align="center">
   <img src="docs/modes.svg" alt="Dictation, voice control, and translate modes" width="860">
@@ -28,7 +28,8 @@ recognition runs on your CPU, so nothing you say or do is uploaded.
 
 Switch modes from the tray, or give each one its own hotkey and use them
 side by side. Dictation is the default; voice control turns the same key
-into a command trigger.
+into a command trigger; and translate outputs English from whatever
+language you speak.
 
 ## What it can do
 
