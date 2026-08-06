@@ -155,8 +155,8 @@ class Overlay:
         if state == "hide":
             self.root.withdraw()
             return
-        if isinstance(state, tuple) and state[0] == "message":
-            # Grow the pill so multi-line messages fit without truncation.
+        if isinstance(state, tuple) and state[0] in ("message", "partial"):
+            # Grow the pill so multi-line text fits without truncation.
             n = len(self._wrap(state[1]))
             self._height = self.H + (n - 1) * self.LINE_H
         else:
@@ -198,6 +198,18 @@ class Overlay:
                 c.create_text(w // 2, y0 + i * self.LINE_H, text=line,
                               font=("Segoe UI", 11, "bold"),
                               fill="#50fa7b" if ok else "#ff5555")
+            return
+
+        if isinstance(st, tuple) and st[0] == "partial":
+            # Interim transcription shown live while the key is held; italic and
+            # accent-coloured to read as provisional, not the final insert.
+            _, text = st
+            lines = self._wrap(text)
+            total = len(lines) * self.LINE_H
+            y0 = (h - total) // 2 + self.LINE_H // 2
+            for i, line in enumerate(lines):
+                c.create_text(w // 2, y0 + i * self.LINE_H, text=line,
+                              font=("Segoe UI", 11, "italic"), fill=ACCENT)
             return
 
         if st in ("recording", "locked", "recording_translate",
