@@ -1,6 +1,6 @@
 faster-whisper==1.2.1
 sounddevice==0.5.5
-numpy==2.4.6
+numpy==2.5.1
 keyboard==0.13.5
 pyperclip==1.11.0
 pystray==0.19.5
