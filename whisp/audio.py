@@ -219,6 +219,25 @@ class Recorder:
             audio = resample(audio, rate, SAMPLE_RATE)
         return audio
 
+    def snapshot(self):
+        """Return the audio captured so far as a 16 kHz float32 array without
+        stopping capture, or None when nothing has been captured yet.
+
+        Lets a streaming consumer transcribe a growing buffer for live
+        partials. The frame list is copied under the lock; each frame is
+        already an immutable snapshot (the callback only appends new arrays),
+        so the concatenate/resample runs safely outside the lock.
+        """
+        with self._lock:
+            if self._stream is None or not self._frames:
+                return None
+            frames = list(self._frames)
+            rate = self._sample_rate
+        audio = np.concatenate(frames)[:, 0]
+        if rate != SAMPLE_RATE:
+            audio = resample(audio, rate, SAMPLE_RATE)
+        return audio
+
     def abort(self):
         with self._lock:
             if self._stream is None:
