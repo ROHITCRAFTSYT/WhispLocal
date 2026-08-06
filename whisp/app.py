@@ -22,12 +22,14 @@ import configio
 import obsidian
 from adaptive import Adaptive
 from audio import Recorder, SILENCE_RMS, rms, scan_mics
+from bridge import Bridge, PageProxy
 from cleanup import clean
 from commands import CommandEngine, heard_part, parse, speak
 from inject import insert
 from locallm import LocalLLM
 from overlay import Overlay
 from settings import HistoryWindow, SettingsWindow
+from streaming import StreamingTranscriber
 from transcriber import Transcriber
 from tray import build_tray
 
@@ -43,6 +45,23 @@ SINGLE_INSTANCE_PORT = 48917
 
 # States
 IDLE, HOLDING, LOCKED, STOPPING = "idle", "holding", "locked", "stopping"
+
+
+class _LockedEngine:
+    """Serialise live partials against the final transcription: skip a partial
+    rather than hit the shared faster-whisper model from two threads at once."""
+
+    def __init__(self, transcriber, lock):
+        self._transcriber = transcriber
+        self._lock = lock
+
+    def transcribe(self, audio, **kw):
+        if not self._lock.acquire(blocking=False):
+            return "", None, None  # a real transcription holds the model; skip
+        try:
+            return self._transcriber.transcribe(audio, **kw)
+        finally:
+            self._lock.release()
 
 
 def log(msg):
@@ -86,6 +105,12 @@ class App:
         # only when every fast pattern match fails, so replies are never
         # slowed by it.
         self.llm = LocalLLM(self.config.get("llm_model_path", ""))
+        # Browser bridge: a localhost WebSocket server the companion extension
+        # connects to. Degrades to a no-op if 'websockets' is missing or the
+        # bridge is disabled in config, so ("page", ...) commands just report a
+        # hint and the desktop experience is unchanged.
+        self.bridge = Bridge(APP_DIR, config=self.config, log=log)
+        self.page = PageProxy(self.bridge)
         self.commands = CommandEngine(
             note_saver=self._save_note,
             profile_saver=self._save_profile,
@@ -94,7 +119,8 @@ class App:
             llm=(self.llm.understand if self.config.get("llm_enabled",
                                                         False) else None),
             on_llm_done=self._on_llm_done,
-            phrase_learner=self._learn_llm_phrase)
+            phrase_learner=self._learn_llm_phrase,
+            page=self.page)
         # Reinforcement: ambiguous app names resolve to the one used most.
         self.commands.usage = self.adaptive.app_counts
         # Phrases the user corrected in History (heard -> corrected).
@@ -119,6 +145,8 @@ class App:
         self.hotkey = self.config.get("hotkey", "right ctrl")
         self.tray = None
         self._hooks = []
+        # Live partial transcription: created per-recording when enabled.
+        self._streamer = None
 
     # ----- config ---------------------------------------------------------
     def save_config(self, cfg):
@@ -309,6 +337,7 @@ class App:
         # Re-registering removes the release handler; if a recording is in
         # flight it would never get its stop event — abort it first.
         if self.state != IDLE:
+            self._stop_streaming()
             self.recorder.abort()
             self.state = IDLE
             self.overlay.post("hide")
@@ -372,6 +401,7 @@ class App:
                      "command": "recording_command"}.get(self.task, "recording")
             self.overlay.post(state)
             self._beep(880)
+            self._start_streaming()
             log(f"recording on {self.recorder.device or 'default mic'} "
                 f"@{self.recorder._sample_rate} Hz")
         except Exception as e:
@@ -381,8 +411,31 @@ class App:
                                "Microphone error — check Settings → "
                                "Microphone and Windows privacy", False))
 
+    def _start_streaming(self):
+        """Begin live partial transcription for this recording, if enabled."""
+        self._streamer = None
+        if not self.config.get("live_partials", False):
+            return
+        if self.task not in ("transcribe", "translate"):
+            return
+        self._streamer = StreamingTranscriber(
+            self.recorder,
+            _LockedEngine(self.transcriber, self._process_lock),
+            lambda text: self.overlay.post(("partial", text)),
+            hotwords_fn=self.adaptive.hotwords,
+            language=self.config.get("language") or None,
+        )
+        self._streamer.start(self.task)
+
+    def _stop_streaming(self):
+        if self._streamer is not None:
+            self._streamer.stop()
+            self._streamer = None
+
     def _finish_recording(self):
         # Note: does not touch self.state — callers own the transition.
+        # Stop live partials before the final pass so they never race the model.
+        self._stop_streaming()
         self._beep(440)
         audio = self.recorder.stop()
         if audio is None or len(audio) < 4000:  # < 0.25 s — ignore blips
@@ -503,6 +556,7 @@ class App:
     # ----- lifecycle ------------------------------------------------------
     def quit(self):
         self.recorder.abort()
+        self.bridge.stop()
         self.overlay.post("quit")
         if self.tray:
             self.tray.stop()
@@ -567,6 +621,8 @@ class App:
         threading.Thread(target=self.tray.run, daemon=True).start()
         threading.Thread(target=self._preload_model, daemon=True).start()
         threading.Thread(target=self._auto_select_mic, daemon=True).start()
+        if self.config.get("bridge_enabled", True):
+            self.bridge.start()
         log(f"WhispLocal {__version__} started — hotkey: {self.hotkey}, "
             f"model: {self.transcriber.model_name}")
         self.overlay.run()  # tkinter main loop (main thread)

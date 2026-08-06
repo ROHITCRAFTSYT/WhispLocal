@@ -11,6 +11,7 @@
   "input_device": null,
   "auto_select_mic": true,
   "insert_mode": "paste",
+  "live_partials": false,
   "overlay_position": "bottom-center",
   "obsidian_vault": "",
   "restore_clipboard": true,
