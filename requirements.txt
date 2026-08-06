@@ -5,6 +5,7 @@ keyboard==0.13.5
 pyperclip==1.11.0
 pystray==0.19.5
 Pillow==12.3.0
+websockets>=12.0        # localhost bridge to the browser extension (bridge.py)
 
 # Optional — local LLM fallback for novel voice commands (Settings →
 # "Local LLM fallback model"). Installed lazily, only when you configure

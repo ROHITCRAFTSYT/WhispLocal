@@ -365,6 +365,115 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(kind_arg("update my profile"), ("profile", None))
 
 
+class PageParseTests(unittest.TestCase):
+    """The browser-surface ("page") intents. Parsing is pure; execution is
+    delegated to the extension via PageProxy (see docs/BRIDGE_SPEC.md)."""
+
+    def test_hide(self):
+        self.assertEqual(
+            kind_arg("hide the cookie banner"),
+            ("page", {"op": "hide", "target": "cookie banner",
+                      "persist": False}))
+        self.assertEqual(
+            kind_arg("get rid of the sidebar"),
+            ("page", {"op": "hide", "target": "sidebar", "persist": False}))
+        self.assertEqual(
+            kind_arg("remove the popup"),
+            ("page", {"op": "hide", "target": "popup", "persist": False}))
+
+    def test_hide_persist(self):
+        self.assertEqual(
+            kind_arg("hide shorts for good"),
+            ("page", {"op": "hide", "target": "shorts", "persist": True}))
+        self.assertEqual(
+            kind_arg("remove the ads on this site"),
+            ("page", {"op": "hide", "target": "ads", "persist": True}))
+        self.assertEqual(
+            kind_arg("hide the newsletter box permanently"),
+            ("page", {"op": "hide", "target": "newsletter box",
+                      "persist": True}))
+
+    def test_text_size(self):
+        larger = ("page", {"op": "restyle", "target": "body",
+                           "value": "text-larger"})
+        self.assertEqual(kind_arg("bigger text"), larger)
+        self.assertEqual(kind_arg("make the text larger"), larger)
+        self.assertEqual(kind_arg("increase font size"), larger)
+        smaller = ("page", {"op": "restyle", "target": "body",
+                            "value": "text-smaller"})
+        self.assertEqual(kind_arg("smaller text"), smaller)
+        self.assertEqual(kind_arg("make the text smaller"), smaller)
+
+    def test_declutter(self):
+        declutter = ("page", {"op": "declutter", "target": "main"})
+        self.assertEqual(kind_arg("declutter this page"), declutter)
+        self.assertEqual(kind_arg("reader mode"), declutter)
+        self.assertEqual(kind_arg("simplify the page"), declutter)
+
+    def test_summarize(self):
+        summ = ("page", {"op": "summarize", "target": "main"})
+        self.assertEqual(kind_arg("summarize this page"), summ)
+        self.assertEqual(kind_arg("summarise this article"), summ)
+        self.assertEqual(kind_arg("tldr"), summ)
+
+    def test_read(self):
+        self.assertEqual(
+            kind_arg("read the article"),
+            ("page", {"op": "read", "target": "article"}))
+        self.assertEqual(
+            kind_arg("extract the comments"),
+            ("page", {"op": "read", "target": "comments"}))
+
+    def test_page_intents_do_not_shadow_desktop(self):
+        # The page grammar must leave every existing desktop intent intact.
+        self.assertEqual(kind_arg("close chrome"), ("close_app", "chrome"))
+        self.assertEqual(kind_arg("open chrome"), ("open_app", "chrome"))
+        self.assertEqual(kind_arg("copy"), ("shortcut", "copy"))
+        self.assertEqual(kind_arg("search for python tutorials"),
+                         ("search", "python tutorials"))
+        # "reader mode" is a page op, but "read" alone is not a command.
+        self.assertIsNone(parse("read"))
+
+
+class PageExecuteTests(unittest.TestCase):
+    """The ("page", ...) branch of _execute delegates to PageProxy and never
+    acts locally."""
+
+    class _StubPage:
+        def __init__(self, connected, result=(True, "Hidden", None)):
+            self._connected = connected
+            self._result = result
+            self.calls = []
+
+        def connected(self):
+            return self._connected
+
+        def run(self, directive, timeout=4.0):
+            self.calls.append(directive)
+            return self._result
+
+    def test_no_browser_returns_hint(self):
+        e = CommandEngine(build_index=False, page=self._StubPage(False))
+        ok, feedback = e._execute("page", {"op": "hide", "target": "x"})
+        self.assertFalse(ok)
+        self.assertIn("extension", feedback.lower())
+
+    def test_page_is_optional(self):
+        # A CommandEngine with no bridge still answers, never crashes.
+        e = CommandEngine(build_index=False)
+        ok, feedback = e._execute("page", {"op": "hide", "target": "x"})
+        self.assertFalse(ok)
+
+    def test_delegates_to_proxy_when_connected(self):
+        page = self._StubPage(True, (True, "Hidden the cookie banner", None))
+        e = CommandEngine(build_index=False, page=page)
+        directive = {"op": "hide", "target": "cookie banner", "persist": False}
+        ok, feedback = e._execute("page", directive)
+        self.assertTrue(ok)
+        self.assertEqual(feedback, "Hidden the cookie banner")
+        self.assertEqual(page.calls, [directive])
+
+
 class RepairTests(unittest.TestCase):
     def setUp(self):
         self.e = CommandEngine(build_index=False)
