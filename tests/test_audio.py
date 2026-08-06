@@ -105,6 +105,35 @@ class RecorderFallbackTests(unittest.TestCase):
         self.assertIsNone(Recorder().stop())
 
 
+class SnapshotTests(unittest.TestCase):
+    def _capturing(self, frames, rate=SAMPLE_RATE):
+        rec = Recorder()
+        rec._stream = object()  # sentinel: capture is in progress
+        rec._frames = frames
+        rec._sample_rate = rate
+        return rec
+
+    def test_snapshot_none_when_idle(self):
+        self.assertIsNone(Recorder().snapshot())
+
+    def test_snapshot_none_before_any_frames(self):
+        self.assertIsNone(self._capturing([]).snapshot())
+
+    def test_snapshot_concatenates_without_stopping(self):
+        a = np.full((100, 1), 0.2, dtype=np.float32)
+        b = np.full((50, 1), 0.3, dtype=np.float32)
+        rec = self._capturing([a, b])
+        out = rec.snapshot()
+        self.assertEqual(out.shape, (150,))
+        # capture must keep running: stream still attached, frames untouched
+        self.assertIsNotNone(rec._stream)
+        self.assertEqual(len(rec._frames), 2)
+
+    def test_snapshot_resamples_native_rate_to_16k(self):
+        rec = self._capturing([np.full((4800, 1), 0.1, dtype=np.float32)], rate=48000)
+        self.assertEqual(len(rec.snapshot()), 1600)  # 0.1 s @48k -> 1600 @16k
+
+
 @unittest.skipUnless(HAVE_AUDIO, "numpy/sounddevice not installed")
 class ScanMicsTests(unittest.TestCase):
     def setUp(self):
