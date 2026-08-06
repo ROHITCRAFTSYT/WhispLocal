@@ -166,6 +166,8 @@ class SettingsWindow:
              "Auto-select a working microphone at startup", True),
             ("save_history", "Save dictation history", True),
             ("restore_clipboard", "Restore clipboard after paste", True),
+            ("live_partials",
+             "Show words live as I speak (experimental)", False),
             ("adaptive_learning",
              "Learn my vocabulary and languages (stored locally)", True),
             ("llm_enabled",

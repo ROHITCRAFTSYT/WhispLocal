@@ -36,6 +36,9 @@ language you speak.
 - Type into any app: browsers, editors, chat, terminals.
 - Hold to talk, or tap once to lock recording on for longer stretches.
 - A live waveform shows your real mic level while recording.
+- Optional live partials: see words appear as you speak, before you release
+  the key (enable "Show words live as I speak" in Settings). The final,
+  cleaned text is still inserted once on release.
 - Clean up as you go: filler words removed, sentences capitalized, plus
   a personal dictionary of corrections.
 - Speak other languages, or translate them to English on a second hotkey.
