@@ -105,12 +105,13 @@ class RecorderFallbackTests(unittest.TestCase):
         self.assertIsNone(Recorder().stop())
 
 
+@unittest.skipUnless(HAVE_AUDIO, "numpy/sounddevice not installed")
 class SnapshotTests(unittest.TestCase):
-    def _capturing(self, frames, rate=SAMPLE_RATE):
+    def _capturing(self, frames, rate=None):
         rec = Recorder()
         rec._stream = object()  # sentinel: capture is in progress
         rec._frames = frames
-        rec._sample_rate = rate
+        rec._sample_rate = rate or SAMPLE_RATE
         return rec
 
     def test_snapshot_none_when_idle(self):

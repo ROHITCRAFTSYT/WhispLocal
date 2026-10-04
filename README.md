@@ -41,6 +41,14 @@ language you speak.
   cleaned text is still inserted once on release.
 - Clean up as you go: filler words removed, sentences capitalized, plus
   a personal dictionary of corrections.
+- Writes for the app you are in: formal sentences in email, relaxed
+  messages in chat, exact words in a terminal, numbered lists in notes.
+- Voice editing: select text, hold the edit key, say "make it formal" or
+  "turn this into bullet points", and the selection is rewritten.
+- Spoken shortcuts ("my email" types your address), a personal
+  vocabulary, "new line", "bullet point" and "scratch that".
+- Never loses a dictation: paste the last one again, or retry the last
+  recording from the tray. Incognito mode saves nothing at all.
 - Speak other languages, or translate them to English on a second hotkey.
 - Voice control: open apps (including Microsoft Store apps), play music,
   web and YouTube search, close and manage windows, type and press keys,
@@ -92,6 +100,97 @@ auto-detection; it is faster and more reliable for short clips. For
 Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, and Punjabi,
 WhispLocal prompts the model in the native script, so you get देवनागरी
 rather than a Latin transliteration.
+
+## Writes for the app you are in
+
+WhispLocal looks at which app has focus when you start talking and
+picks a writing style for it. Everything is a fixed set of local rules,
+so it is instant and predictable.
+
+| Where you dictate | Style | What changes |
+|---|---|---|
+| Outlook, Gmail, Thunderbird | formal | "idk", "FYI", "gonna" are spelled out, verbal fillers dropped, ends with punctuation |
+| Slack, Discord, WhatsApp, Teams | casual | a lone trailing period is dropped, "thumbs up emoji" becomes 👍 |
+| ChatGPT, Claude, Gemini | casual | plus developer helpers (below) |
+| VS Code, Cursor, JetBrains | verbatim | your exact words, no trailing period |
+| Obsidian, Notion, OneNote | standard | "first…, then…, finally…" becomes a numbered list |
+| Word, Google Docs | formal | as for email |
+| Terminals | verbatim | no capital letter or period added to commands |
+
+Browsers are recognised by the page title, so Gmail in Chrome counts as
+email. Change the style for any kind of app, or for one app by name
+(`slack => formal`), on the Styles tab in Settings, or turn the feature
+off there.
+
+Dictation fits into the text already around the cursor. Continue a
+sentence and it carries on in lowercase with a leading space ("…and
+then we left") instead of starting a new capitalised sentence. Names
+and words from your vocabulary keep their capitals.
+
+Some spoken phrases work everywhere:
+
+| Say | Get |
+|---|---|
+| "new line", "new paragraph" | a line break, a blank line |
+| "shopping list bullet point milk bullet point eggs" | a bulleted list |
+| "buy milk. scratch that. buy eggs" | "Buy eggs." |
+| "meet at 3, no wait, 4 pm" | "Meet at 4 PM" |
+| "three thirty pm" | "3:30 PM" |
+| "at file app dot py" (code and AI chats) | `@app.py` |
+| "snake case user account id" (code and AI chats) | `user_account_id` (also camel, pascal, kebab, constant) |
+
+For Hindi, Marathi, Bengali, Tamil, Telugu, Gujarati, Punjabi and Urdu
+you can choose Roman-script output in Settings ("kal meeting kitne baje
+hai?") instead of the native script.
+
+## Voice editing
+
+Set a voice edit hotkey in Settings, select some text in any app, hold
+the key and say what to change. The selection is replaced with the
+result and your clipboard is restored afterwards.
+
+| Say | Happens |
+|---|---|
+| "make it formal", "more casual", "make it shorter" | rewrites the tone |
+| "turn this into bullet points", "numbered list", "one paragraph" | restructures |
+| "replace Monday with Tuesday", "delete the word really" | targeted fixes |
+| "delete the last sentence", "fix the punctuation" | cleanup |
+| "uppercase", "title case", "snake case", "code block" | formatting |
+
+Those run instantly through local rules. With a local LLM configured
+(Settings → Advanced) anything else works too ("summarise this",
+"reply saying I'll be late"), and with nothing selected it writes new
+text at the cursor. Editing never reads password fields.
+
+## Spoken shortcuts and vocabulary
+
+On the Shortcuts tab, add lines like `my email => rohit@example.com`
+or `sign off => Thanks,\nRohit`. Saying just the trigger inserts the
+text exactly; triggers of two or more words also expand inside a
+sentence. `{date}`, `{time}` and `{day}` are filled in. The vocabulary
+list (names, product terms, jargon) is always passed to the recognizer
+as hints, so those words come out right the first time.
+
+## Never lose a dictation
+
+- **Paste last dictation** (tray) puts the last text down again, for
+  when it went to the wrong window.
+- **Retry last recording** (tray) runs your last recording through the
+  recognizer again, for example after switching model or language. The
+  recording is kept encrypted with your Windows account (DPAPI), only
+  the most recent one, for at most a day.
+- If nothing can receive text (you were on the desktop), the result is
+  copied to the clipboard instead of disappearing.
+- A forgotten locked recording stops by itself after six minutes
+  (configurable).
+- **Incognito** (tray) turns off history, learning and the retained
+  recording until you switch it off.
+
+Hotkeys can also be chords: `ctrl+windows` or `ctrl+alt` work as
+hold-to-talk keys. **Stats** in the tray shows words dictated, speaking
+speed, time saved compared with typing, and your daily streak, all
+computed from the local history file. History has search and an app
+filter.
 
 ## Voice control
 
@@ -255,6 +354,12 @@ WhispLocal shortcut into that folder.
   or delete the files whenever you want.
 - The default insert method briefly uses the clipboard and restores it.
   The `type` method avoids the clipboard entirely.
+- To pick a style and fit spacing, WhispLocal reads the focused app's
+  name and up to 200 characters before the cursor when you start a
+  dictation. That stays in memory for the one dictation; password fields
+  are never read. Turn it off on the Styles tab.
+- The last recording is kept DPAPI-encrypted for retry (one take, at
+  most a day). Turn it off in Settings → Advanced, or use Incognito.
 - See [GUARDRAILS.md](GUARDRAILS.md) for exactly what voice control will
   and will not do.
 
@@ -264,8 +369,10 @@ WhispLocal shortcut into that folder.
 venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-The suite covers text cleanup, the personalization engine, the command
-parser and app matching, and the Obsidian writer. `debug.bat` runs the
+The suite covers text cleanup, app styles, the insertion planner, voice
+edits, spoken shortcuts, history search and stats, chords, take recovery,
+the personalization engine, the command parser and app matching, and the
+Obsidian writer. `debug.bat` runs the
 app with a console attached; errors also go to `whisp.log`, which rotates
 itself. Pull requests welcome.
 

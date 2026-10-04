@@ -274,6 +274,14 @@ def _strip_target(target):
     return cleaned or target
 
 
+# A "hide X permanently" trailer promotes a one-off page tweak into a saved,
+# per-domain rule. Stripped from the target so "hide shorts for good" stores a
+# rule for "shorts", not "shorts for good".
+_PAGE_PERSIST = re.compile(
+    r"\s+(?:for good|permanently|forever|always|"
+    r"on this (?:site|website|page)|everywhere)\s*$", re.I)
+
+
 def heard_part(entry_text):
     """History stores command entries as "heard -> feedback"; return the
     heard phrase the user actually said (commands only). Splits at the
@@ -334,6 +342,40 @@ def parse(text):
             r"save (?:this )?to obsidian[:,]?\s+(.+)", note_text, re.I)
     if m:
         return ("note", m.group(1).strip(), None)
+
+    # --- page tweaks (browser surface) ------------------------------------
+    # Only reached when the phrase is a genuine page verb; execution is
+    # delegated to the browser extension via PageProxy and is gated on a
+    # connected browser, so with no extension these simply report a hint and
+    # nothing about the desktop experience changes. See docs/BRIDGE_SPEC.md.
+    if re.match(r"^(?:make (?:the )?text (?:bigger|larger)"
+                r"|(?:bigger|larger) text"
+                r"|increase (?:the )?(?:text|font)(?: size)?"
+                r"|zoom in(?: the)? text)$", t):
+        return ("page", {"op": "restyle", "target": "body",
+                         "value": "text-larger"}, None)
+    if re.match(r"^(?:make (?:the )?text (?:smaller|tinier)"
+                r"|(?:smaller|tinier) text"
+                r"|decrease (?:the )?(?:text|font)(?: size)?"
+                r"|zoom out(?: the)? text)$", t):
+        return ("page", {"op": "restyle", "target": "body",
+                         "value": "text-smaller"}, None)
+    if re.match(r"^(?:declutter|clean up|simplify|reader mode|reader view)"
+                r"(?:\s+(?:this|the))?(?:\s+page)?$", t):
+        return ("page", {"op": "declutter", "target": "main"}, None)
+    if re.match(r"^(?:summari[sz]e|tl;?dr|give me the gist)\b", t):
+        return ("page", {"op": "summarize", "target": "main"}, None)
+    m = re.match(r"(?:hide|remove|get rid of)\s+(?:the\s+)?(.+)", t)
+    if m:
+        tgt = m.group(1).strip()
+        persist = bool(_PAGE_PERSIST.search(tgt))
+        tgt = _PAGE_PERSIST.sub("", tgt).strip()
+        if tgt:
+            return ("page", {"op": "hide", "target": tgt,
+                             "persist": persist}, None)
+    m = re.match(r"(?:read|extract)\s+(?:me\s+)?(?:the\s+)?(.+)", t)
+    if m:
+        return ("page", {"op": "read", "target": m.group(1).strip()}, None)
 
     m = re.match(r"(?:close|quit|exit|kill)\s+(?:the\s+)?(.+)", t)
     if m:
@@ -787,8 +829,13 @@ _CLOSE_VERBS = ("close", "quit", "exit", "kill")
 class CommandEngine:
     def __init__(self, build_index=True, note_saver=None, on_action=None,
                  profile_saver=None, on_open_settings=None, llm=None,
-                 on_llm_done=None, phrase_learner=None):
+                 on_llm_done=None, phrase_learner=None, page=None):
         self.app_index = {}
+        # Optional browser bridge (PageProxy). When a browser with the
+        # companion extension is connected, ("page", ...) commands are
+        # delegated to it; otherwise the page branch reports a hint and the
+        # desktop experience is unchanged. See docs/BRIDGE_SPEC.md.
+        self.page = page
         # usage counts (label -> times launched); the app points this at the
         # learning profile so previously-used apps win ambiguous matches.
         self.usage = {}
@@ -1375,6 +1422,14 @@ class CommandEngine:
         return None
 
     def _execute(self, kind, arg):
+        if kind == "page":
+            # Browser-surface ops are executed by the extension, not here.
+            if self.page is None or not self.page.connected():
+                return False, ("Open your browser with the WhispLocal "
+                               "extension to change a web page")
+            ok, feedback, _data = self.page.run(arg)
+            return ok, feedback
+
         if kind == "switch":
             got = self.switch_to(arg)
             if got:

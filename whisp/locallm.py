@@ -146,7 +146,8 @@ class LocalLLM:
 
     def _load_llama(self):
         from llama_cpp import Llama
-        return Llama(model_path=self.model_path, n_ctx=1024, verbose=False)
+        # 4096 tokens leaves room for voice edits of a few paragraphs.
+        return Llama(model_path=self.model_path, n_ctx=4096, verbose=False)
 
     def _load_onnx(self):
         import onnxruntime as ort
@@ -175,48 +176,81 @@ class LocalLLM:
         thread). Any failure or refusal quietly returns None — the caller
         simply keeps the original "not sure" reply.
         """
+        text = self.generate(build_prompt(phrase), max_tokens=48,
+                             stop=["\n", "NONE"])
+        return sanitize(text)
+
+    def generate(self, prompt, max_tokens=48, stop=None, timeout=None,
+                 persist_errors=True):
+        """Raw completion for `prompt`, or None on refusal/error/timeout.
+        Blocks up to `timeout` (default self.timeout). Text tasks pass
+        persist_errors=False so one oversized selection cannot disable the
+        model for everything else."""
         if not self.configured():
             return None
         result = {}
 
         def _run():
             # The lock is held for the whole generation (load + inference)
-            # so concurrent understand() calls serialize instead of two
-            # threads hammering one session at once.
+            # so concurrent calls serialize instead of two threads
+            # hammering one session at once.
             with self._lock:
                 self._load()
                 if self._session is None:
                     return
                 try:
-                    result["text"] = self._generate(phrase)
+                    result["text"] = self._generate(prompt, max_tokens, stop)
                 except Exception as e:
                     result["error"] = str(e)
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
-        t.join(self.timeout)
+        t.join(self.timeout if timeout is None else timeout)
         if "error" in result:
-            self._load_error = result["error"]  # don't retry a broken model
+            if persist_errors:
+                self._load_error = result["error"]  # don't retry a broken model
             return None
-        if "text" not in result:
-            return None  # timed out
-        return sanitize(result["text"])
+        return result.get("text")  # None when timed out
 
-    def _generate(self, phrase):
+    # Text tasks used by voice editing and dictation polish. Each returns
+    # cleaned text or None; callers keep their rule-based result on None.
+    def rewrite(self, instruction, text, timeout=25.0):
+        from editing import clean_llm_output, rewrite_prompt
+        out = self.generate(rewrite_prompt(instruction, text),
+                            max_tokens=max(64, len(text) // 2 + 96),
+                            timeout=timeout, persist_errors=False)
+        return clean_llm_output(out, original=text)
+
+    def author(self, instruction, category="general", timeout=25.0):
+        from editing import author_prompt, clean_llm_output
+        out = self.generate(author_prompt(instruction, category),
+                            max_tokens=320, timeout=timeout,
+                            persist_errors=False)
+        return clean_llm_output(out)
+
+    def polish(self, text, preset, timeout=10.0):
+        from editing import clean_llm_output, polish_prompt
+        out = self.generate(polish_prompt(text, preset),
+                            max_tokens=max(48, len(text) // 2 + 64),
+                            stop=["\n\nDictated:"], timeout=timeout,
+                            persist_errors=False)
+        return clean_llm_output(out, original=text)
+
+    def _generate(self, prompt, max_tokens=48, stop=None):
         if self.backend == "onnx":
-            return self._generate_onnx(phrase)
-        return self._generate_llama(phrase)
+            return self._generate_onnx(prompt, max_tokens)
+        return self._generate_llama(prompt, max_tokens, stop)
 
-    def _generate_llama(self, phrase):
+    def _generate_llama(self, prompt, max_tokens=48, stop=None):
         out = self._session.create_completion(
-            prompt=build_prompt(phrase),
-            max_tokens=48,
+            prompt=prompt,
+            max_tokens=max_tokens,
             temperature=0.0,
-            stop=["\n", "NONE"],
+            stop=stop or [],
             echo=False)
         return out["choices"][0]["text"]
 
-    def _generate_onnx(self, phrase):
+    def _generate_onnx(self, prompt, max_new=48):
         """Greedy decode with onnxruntime. Needs a tokenizer; without one
         the attempt fails cleanly (the caller keeps its normal reply)."""
         session = self._session["session"]
@@ -226,7 +260,7 @@ class LocalLLM:
                 "ONNX backend needs a HuggingFace tokenizer next to the "
                 "model (tokenizer.json / transformers)")
         import numpy as np
-        enc = tokenizer(build_prompt(phrase), return_tensors="np")
+        enc = tokenizer(prompt, return_tensors="np")
         ids = np.asarray(enc["input_ids"], dtype=np.int64)
         attn = enc.get("attention_mask")
         feed = {}
@@ -245,7 +279,6 @@ class LocalLLM:
             raise RuntimeError("model has no input_ids input")
         eos = tokenizer.eos_token_id or 0
         prompt_len = ids.shape[1]
-        max_new = 48
         for _ in range(max_new):
             out = session.run(None, feed)[0]
             logits = out[0, -1]

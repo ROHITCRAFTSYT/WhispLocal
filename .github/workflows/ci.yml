@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile all modules
-        run: python -m py_compile whisp/adaptive.py whisp/app.py whisp/audio.py whisp/cleanup.py whisp/commands.py whisp/configio.py whisp/inject.py whisp/obsidian.py whisp/overlay.py whisp/settings.py whisp/transcriber.py whisp/tray.py warmup.py
+        run: python -m py_compile whisp/adaptive.py whisp/app.py whisp/appcontext.py whisp/audio.py whisp/chords.py whisp/cleanup.py whisp/commands.py whisp/configio.py whisp/cues.py whisp/editing.py whisp/history.py whisp/inject.py whisp/locallm.py whisp/obsidian.py whisp/overlay.py whisp/planner.py whisp/recovery.py whisp/settings.py whisp/snippets.py whisp/styles.py whisp/transcriber.py whisp/tray.py warmup.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
