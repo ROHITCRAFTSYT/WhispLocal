@@ -18,8 +18,15 @@ import keyboard
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import appcontext
+import chords
 import configio
+import cues
+import editing
 import obsidian
+import planner
+import snippets
+import styles
 from adaptive import Adaptive
 from audio import Recorder, SILENCE_RMS, rms, scan_mics
 from bridge import Bridge, PageProxy
@@ -28,12 +35,13 @@ from commands import CommandEngine, heard_part, parse, speak
 from inject import insert
 from locallm import LocalLLM
 from overlay import Overlay
-from settings import HistoryWindow, SettingsWindow
+from recovery import LastTake, Ledger
+from settings import HistoryWindow, SettingsWindow, StatsWindow
 from streaming import StreamingTranscriber
 from transcriber import Transcriber
 from tray import build_tray
 
-__version__ = "2.22.0"
+__version__ = "3.0.0"
 
 HISTORY_PATH = os.path.join(APP_DIR, "history.jsonl")
 LOG_PATH = os.path.join(APP_DIR, "whisp.log")
@@ -145,8 +153,21 @@ class App:
         self.hotkey = self.config.get("hotkey", "right ctrl")
         self.tray = None
         self._hooks = []
+        # Multi-key hold chords ("ctrl+windows"): (matcher, key_id) pairs
+        # fed from one raw keyboard hook.
+        self._chords = []
         # Live partial transcription: created per-recording when enabled.
         self._streamer = None
+        # Where the current take will land (app, category, text before the
+        # caret), captured when recording starts.
+        self._ctx_future = None
+        self._take_id = 0
+        # Never lose a dictation: the last take (DPAPI-encrypted) for
+        # "Retry last recording", and the last inserted text.
+        self.last_take = LastTake(APP_DIR)
+        self.ledger = Ledger()
+        # Incognito: nothing is saved, learned or retained while on.
+        self.incognito = False
 
     # ----- config ---------------------------------------------------------
     def save_config(self, cfg):
@@ -178,6 +199,9 @@ class App:
                     old_t.language = new_t.language
                     old_t.beam_size = new_t.beam_size
                     old_t.cpu_threads = new_t.cpu_threads
+                    old_t.script = new_t.script
+            if not self.config.get("retain_last_take", True):
+                self.last_take.clear()
             self.adaptive.enabled = self.config.get("adaptive_learning", True)
             # Rebuild the LLM fallback from the new config and rewire it
             # into the engine (a new model path / enabled flag applies
@@ -313,6 +337,51 @@ class App:
         if self.tray:
             self.tray.update_menu()
 
+    def toggle_incognito(self):
+        """While on: no history, no learning, no retained audio."""
+        self.incognito = not self.incognito
+        if self.incognito:
+            self.last_take.clear()
+        if self.tray:
+            self.tray.update_menu()
+        self.overlay.post(("message",
+                           "Incognito on: nothing is saved" if self.incognito
+                           else "Incognito off", True))
+        log(f"incognito {'on' if self.incognito else 'off'}")
+
+    def paste_last(self):
+        """Insert the last dictation again (for when it landed in the
+        wrong window or the paste was blocked)."""
+        text = self.ledger.last()
+        if not text:
+            self.overlay.post(("message", "Nothing dictated yet", False))
+            return
+
+        def _run():
+            time.sleep(0.25)  # let the tray menu close and focus return
+            insert(text, self.config)
+        threading.Thread(target=_run, daemon=True).start()
+
+    def retry_last(self):
+        """Re-run the last recording through the pipeline (after a failure,
+        or with a different model or language)."""
+        audio, meta = self.last_take.load()
+        if audio is None:
+            self.overlay.post(("message", "No recent recording to retry",
+                               False))
+            return
+        task = (meta or {}).get("task", "transcribe")
+        if task not in ("transcribe", "translate"):
+            task = "transcribe"
+        self.overlay.post("transcribing")
+
+        def _run():
+            time.sleep(0.25)
+            self._ctx_future = appcontext.capture_async(
+                read_text=self.config.get("read_context", True))
+            self._process(audio, task)
+        threading.Thread(target=_run, daemon=True).start()
+
     # ----- windows ----------------------------------------------------------
     def open_settings(self):
         self.overlay.call(lambda: SettingsWindow(self.overlay.root, self))
@@ -321,16 +390,13 @@ class App:
         self.overlay.call(
             lambda: HistoryWindow(self.overlay.root, HISTORY_PATH, app=self))
 
+    def open_stats(self):
+        self.overlay.call(
+            lambda: StatsWindow(self.overlay.root, HISTORY_PATH))
+
     # ----- sounds -----------------------------------------------------------
-    def _beep(self, freq, ms=70):
-        if not self.config.get("sound_cues", True):
-            return
-        try:
-            import winsound
-            threading.Thread(target=winsound.Beep, args=(freq, ms),
-                             daemon=True).start()
-        except Exception:
-            pass
+    def _cue(self, name):
+        cues.play(name, enabled=self.config.get("sound_cues", True))
 
     # ----- hotkey state machine ----------------------------------------------
     def _register_hotkeys(self):
@@ -347,24 +413,39 @@ class App:
             except (KeyError, ValueError):
                 pass
         self._hooks = []
+        self._chords = []
         pairs = [(self.hotkey, "main")]
-        tr = (self.config.get("translate_hotkey") or "").strip()
-        if tr:
-            pairs.append((tr, "translate"))
-        cmd = (self.config.get("command_hotkey") or "").strip()
-        if cmd:
-            pairs.append((cmd, "command"))
+        for cfg_key, key_id in (("translate_hotkey", "translate"),
+                                ("command_hotkey", "command"),
+                                ("edit_hotkey", "edit")):
+            key = (self.config.get(cfg_key) or "").strip()
+            if key:
+                pairs.append((key, key_id))
         for key, key_id in pairs:
+            if chords.is_chord(key):
+                self._chords.append((chords.ChordMatcher(key), key_id))
+                continue
             self._hooks.append(keyboard.on_press_key(
                 key, lambda e, k=key_id: self.on_press(k), suppress=False))
             self._hooks.append(keyboard.on_release_key(
                 key, lambda e, k=key_id: self.on_release(k), suppress=False))
+        if self._chords:
+            self._hooks.append(keyboard.hook(self._on_chord_event))
+
+    def _on_chord_event(self, event):
+        """Raw key events -> chord press/release for multi-key hotkeys."""
+        for matcher, key_id in self._chords:
+            edge = matcher.feed(event.event_type, event.name)
+            if edge == "press":
+                self.on_press(key_id)
+            elif edge == "release":
+                self.on_release(key_id)
 
     def _resolve_task(self, key_id):
         if key_id == "main":
             return ("command" if self.config.get("mode") == "command"
                     else "transcribe")
-        return key_id
+        return key_id  # "translate", "command" or "edit"
 
     def on_press(self, key_id):
         with self.lock:
@@ -395,13 +476,20 @@ class App:
                 self.state = IDLE
 
     def _start_recording(self):
+        # Snapshot the target app before our own overlay appears. Reading
+        # the text before the caret happens on a worker thread.
+        self._ctx_future = appcontext.capture_async(
+            read_text=(self.config.get("read_context", True)
+                       and self.task in ("transcribe", "translate")))
         try:
             self.recorder.start()
             state = {"translate": "recording_translate",
-                     "command": "recording_command"}.get(self.task, "recording")
+                     "command": "recording_command",
+                     "edit": "recording_edit"}.get(self.task, "recording")
             self.overlay.post(state)
-            self._beep(880)
+            self._cue("edit" if self.task == "edit" else "start")
             self._start_streaming()
+            self._arm_take_limit()
             log(f"recording on {self.recorder.device or 'default mic'} "
                 f"@{self.recorder._sample_rate} Hz")
         except Exception as e:
@@ -422,7 +510,7 @@ class App:
             self.recorder,
             _LockedEngine(self.transcriber, self._process_lock),
             lambda text: self.overlay.post(("partial", text)),
-            hotwords_fn=self.adaptive.hotwords,
+            hotwords_fn=self._hotwords,
             language=self.config.get("language") or None,
         )
         self._streamer.start(self.task)
@@ -432,11 +520,35 @@ class App:
             self._streamer.stop()
             self._streamer = None
 
+    def _arm_take_limit(self):
+        """Stop a forgotten locked recording after max_take_seconds, so a
+        stuck key or an accidental lock cannot record forever."""
+        self._take_id += 1
+        limit = float(self.config.get("max_take_seconds", 0) or 0)
+        if limit <= 0:
+            return
+        timer = threading.Timer(limit, self._take_limit_hit,
+                                args=(self._take_id,))
+        timer.daemon = True
+        timer.start()
+
+    def _take_limit_hit(self, take_id):
+        with self.lock:
+            if take_id != self._take_id or self.state not in (HOLDING,
+                                                               LOCKED):
+                return
+            log("take limit reached; stopping the recording")
+            # IDLE (not STOPPING): a key still held down sends a release
+            # that must be ignored, and a later press starts a new take.
+            self.state = IDLE
+            self._finish_recording()
+
     def _finish_recording(self):
         # Note: does not touch self.state — callers own the transition.
         # Stop live partials before the final pass so they never race the model.
         self._stop_streaming()
-        self._beep(440)
+        self._take_id += 1  # disarm the take-limit timer
+        self._cue("stop")
         audio = self.recorder.stop()
         if audio is None or len(audio) < 4000:  # < 0.25 s — ignore blips
             self.overlay.post("hide")
@@ -453,10 +565,34 @@ class App:
                                "Check Settings → Microphone and Windows "
                                "privacy", False))
             return
-        self.overlay.post({"translate": "translate",
-                           "command": "thinking"}.get(self.task, "transcribing"))
+        self.overlay.post({"translate": "translate", "command": "thinking",
+                           "edit": "editing"}.get(self.task, "transcribing"))
+        if self.task in ("transcribe", "translate"):
+            self._retain(audio, self.task)
         threading.Thread(target=self._process, args=(audio, self.task),
                          daemon=True).start()
+
+    def _retain(self, audio, task):
+        """Keep this take (encrypted) so it can be retried from the tray."""
+        if self.incognito or not self.config.get("retain_last_take", True):
+            return
+
+        def _run():
+            try:
+                self.last_take.save(audio, {"task": task})
+            except Exception as e:
+                log(f"could not retain take: {e}")
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _context(self, timeout=0.4):
+        future, self._ctx_future = self._ctx_future, None
+        return future(timeout) if future else appcontext.Context()
+
+    def _hotwords(self):
+        """Recognition hints: your vocabulary list plus learned words."""
+        vocab = " ".join(self.config.get("vocabulary") or [])
+        learned = self.adaptive.hotwords() or ""
+        return (vocab + " " + learned).strip() or None
 
     # ----- pipeline -------------------------------------------------------
     def _process(self, audio, task):
@@ -464,12 +600,15 @@ class App:
             if task == "command":
                 self._process_command(audio)
                 return
+            if task == "edit":
+                self._process_edit(audio)
+                return
             self._process_transcribe(audio, task)
 
     def _process_transcribe(self, audio, task):
         try:
             t0 = time.time()
-            hot = self.adaptive.hotwords()
+            hot = self._hotwords()
             text, lang, prob = self.transcriber.transcribe(
                 audio, task=task, hotwords=hot)
             # Auto-detection is shaky on short clips. If confidence is low
@@ -482,21 +621,141 @@ class App:
                     if retry:
                         log(f"language retry {lang}({prob:.2f}) -> {pref}")
                         text, lang = retry, pref
-            cfg = dict(self.config)
-            cfg["dictionary"] = {**(self.config.get("dictionary") or {}),
-                                 **self.adaptive.learned_dictionary}
-            text = clean(text, cfg)
+            raw = text
+            ctx = self._context()
+            text = self._format(text, ctx)
             if text:
-                insert(text, self.config)
-                if task == "transcribe":
+                self._deliver(text, ctx)
+                if task == "transcribe" and not self.incognito \
+                        and not ctx.secure:
                     self.adaptive.record(text, lang)
                 self._save_history(text, task, len(audio) / 16000,
-                                   time.time() - t0)
-                self.overlay.post("done")
+                                   time.time() - t0, app=ctx.exe,
+                                   raw=raw)
             else:
                 self.overlay.post("hide")
         except Exception as e:
             log(f"pipeline error: {e}\n{traceback.format_exc()}")
+            self._cue("error")
+            self.overlay.post(("message", "Dictation failed. Tray > Retry "
+                               "last recording", False))
+
+    def _format(self, text, ctx):
+        """Raw transcript -> final text for this app: cleanup, spoken
+        shortcuts, the app's writing style, optional local-LLM polish, and
+        fitting it to the text already before the caret."""
+        cfg = dict(self.config)
+        cfg["dictionary"] = {**(self.config.get("dictionary") or {}),
+                             **self.adaptive.learned_dictionary}
+        text = clean(text, cfg)
+        if not text:
+            return text
+        text, exact = snippets.expand(text, self.config.get("snippets") or {})
+        if exact:
+            return text  # a spoken shortcut is inserted exactly as saved
+        preset = "standard"
+        if self.config.get("context_styles", True):
+            preset = styles.resolve_preset(ctx.category, ctx.exe, self.config)
+            text = styles.apply(text, preset, ctx.category, self.config)
+        if (self.config.get("llm_polish") and self.llm.configured()
+                and preset != "verbatim" and len(text.split()) >= 4):
+            polished = self.llm.polish(text, preset)
+            if polished:
+                text = polished
+        keep = list(self.config.get("vocabulary") or []) + list(
+            (self.config.get("dictionary") or {}).values())
+        text = planner.plan(text, ctx.before, keep_caps=keep)
+        log(f"formatted for {ctx.label()} ({ctx.category}/{preset})")
+        return text
+
+    def _deliver(self, text, ctx):
+        """Insert at the cursor, or, when nothing can receive text (the
+        desktop or taskbar is focused), keep it on the clipboard instead of
+        losing it."""
+        self.ledger.record(text, ctx.exe)
+        if not ctx.has_target:
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except Exception:
+                pass
+            self._cue("copied")
+            self.overlay.post(("message", "No text field focused: copied "
+                               "to clipboard", True))
+            return
+        insert(text, self.config)
+        self.overlay.post("done")
+
+    def _wait_hotkey_release(self, timeout=1.5):
+        """Synthetic Ctrl+C/Ctrl+V must not mix with a still-held hotkey
+        (Alt+Ctrl+C is a different shortcut)."""
+        key = (self.config.get("edit_hotkey") or "").strip()
+        parts = chords.parse(key) if key else []
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                if not any(keyboard.is_pressed(p) for p in parts):
+                    return
+            except Exception:
+                return
+            time.sleep(0.03)
+
+    def _process_edit(self, audio):
+        """Voice editing: transform the selection by a spoken instruction,
+        or write new text at the cursor when nothing is selected."""
+        try:
+            ctx = self._context()
+            instruction, _lang, _prob = self.transcriber.transcribe(
+                audio, task="transcribe", hotwords=self._hotwords())
+            instruction = (instruction or "").strip()
+            if not instruction:
+                self.overlay.post("hide")
+                return
+            if ctx.secure:
+                self.overlay.post(("message", "Editing is off in password "
+                                   "fields", False))
+                return
+            self._wait_hotkey_release()
+            selection = editing.capture_selection()
+            if selection is None:
+                self.overlay.post(("message", "Clipboard busy, try again",
+                                   False))
+                return
+            if selection.strip():
+                new, desc = editing.apply_rules(instruction, selection)
+                if new is None and self.llm.configured():
+                    self.overlay.post(("message", "Thinking (local LLM)",
+                                       True))
+                    new = self.llm.rewrite(instruction, selection)
+                    desc = "rewritten"
+                if new is None:
+                    self.overlay.post(("message", "Didn't understand that "
+                                       "edit. Set a local LLM in Settings "
+                                       "for free-form edits", False))
+                    return
+            else:
+                if not self.llm.configured():
+                    self.overlay.post(("message", "Select text first (or "
+                                       "set a local LLM to write new text)",
+                                       False))
+                    return
+                self.overlay.post(("message", "Writing (local LLM)", True))
+                new = self.llm.author(instruction, ctx.category)
+                desc = "written"
+                if not new:
+                    self.overlay.post(("message", "The local LLM gave no "
+                                       "answer", False))
+                    return
+            insert(new, self.config)
+            self.ledger.record(new, ctx.exe)
+            self._cue("done")
+            self.overlay.post(("message", f"Edited: {desc}", True))
+            log(f"edit: {instruction!r} -> {desc} ({len(new)} chars)")
+            self._save_history(f"{instruction} -> {new}", "edit",
+                               len(audio) / 16000, 0, app=ctx.exe)
+        except Exception as e:
+            log(f"edit error: {e}\n{traceback.format_exc()}")
+            self._cue("error")
             self.overlay.post("error")
 
     def _command_hotwords(self):
@@ -532,8 +791,9 @@ class App:
             log(f"command error: {e}\n{traceback.format_exc()}")
             self.overlay.post("error")
 
-    def _save_history(self, text, task, audio_secs, proc_secs):
-        if not self.config.get("save_history", True):
+    def _save_history(self, text, task, audio_secs, proc_secs, app="",
+                      raw=None):
+        if not self.config.get("save_history", True) or self.incognito:
             return
         entry = {
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -542,6 +802,10 @@ class App:
             "audio_s": round(audio_secs, 1),
             "processing_s": round(proc_secs, 1),
         }
+        if app:
+            entry["app"] = app
+        if raw and raw != text:
+            entry["raw"] = raw
         with open(HISTORY_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         try:

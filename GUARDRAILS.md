@@ -63,6 +63,27 @@ will not do.
 - If you want to review what was done, every command and its result is
   written to `whisp.log` and to your dictation history.
 
+## Voice editing and app awareness
+
+- **Edits only touch what you selected.** The edit hotkey copies the
+  current selection (then restores your clipboard), transforms it, and
+  pastes the result over it. Nothing is read unless you use that key.
+- **Password fields are off limits.** Neither the edit hotkey nor the
+  style detection reads a field Windows marks as a password field.
+- **The LLM only returns text.** With a local model configured, edits
+  the rules don't cover are rewritten by the model, and its reply is
+  pasted as text. It cannot run commands, open apps or press keys.
+- **App awareness is read-only and short-lived.** When a dictation
+  starts, the app's name, its window title and up to 200 characters
+  before the cursor are read to choose a style and fix spacing. They
+  live in memory for that one dictation and are not stored, except the
+  app name in your history entry (which history settings and Incognito
+  control).
+- **Retained audio is encrypted and single.** Only the most recent
+  recording is kept, encrypted for your Windows account with DPAPI,
+  and deleted after a day, when retention is turned off, or as soon as
+  Incognito is switched on.
+
 ## Turning things off
 
 - Voice replies: Settings, "Speak confirmations".

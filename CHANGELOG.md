@@ -1,5 +1,55 @@
 # Changelog
 
+## 3.0.0 — 2026-10-04
+
+### Added
+- App-aware writing styles. The focused app (or, in a browser, the page
+  title) picks a preset: formal for email and documents, casual for
+  chat and AI chats, verbatim for code editors and terminals, standard
+  elsewhere. Presets are configurable per kind of app and per app name
+  on the new Styles tab.
+- Insertion planner: with the text before the cursor known (Win32 edit
+  controls, or UI Automation via the optional `comtypes` package), a
+  dictation that continues a sentence gets a leading space and starts
+  in lowercase, while names and vocabulary words keep their capitals.
+- Spoken layout and corrections: "new line", "new paragraph", "bullet
+  point", "scratch that", "3, no wait, 4", spoken times ("three thirty
+  pm" -> "3:30 PM"), and "first…, then…, finally…" as a numbered list
+  in notes, documents, email and AI chats.
+- Developer helpers in code apps and AI chats: "at file app dot py" ->
+  `@app.py`, "snake/camel/pascal/kebab/constant case …".
+- Voice editing on a new edit hotkey: select text and say what to
+  change. Common edits (tone, lists, replace/delete, casing, wrapping,
+  sorting) are instant local rules. Anything else, and writing new text
+  with nothing selected, uses the local LLM when one is configured.
+- Optional LLM polish of dictations (off by default).
+- Spoken shortcuts (`trigger => text`, with {date}/{time}/{day}) and a
+  vocabulary list that is always passed to the recognizer.
+- Roman-script output for eight Indian languages (Hinglish style).
+- Chord hotkeys such as `ctrl+windows`.
+- Tray: Paste last dictation, Retry last recording (the last take is
+  kept DPAPI-encrypted for a day), Incognito, and Stats (words, speaking
+  speed, time saved, streak).
+- History window: BM25 search, app filter, kind filter. Entries now
+  record the app and the raw transcript.
+- Synthesised, softer sound cues replace the square-wave beeps.
+- A forgotten locked recording stops after `max_take_seconds` (360).
+- With the desktop or taskbar focused, the result goes to the clipboard
+  instead of being typed into nothing.
+
+### Changed
+- Settings is split into General, Styles, Shortcuts & words and
+  Advanced tabs.
+- The local LLM context window is 4096 tokens (was 1024) so voice edits
+  of a few paragraphs fit, and a failed text edit no longer disables the
+  model for voice commands.
+
+### Fixed
+- The `type` insert method dropped and repeated characters in busy apps
+  such as Windows 11 Notepad. It now sends one character per SendInput
+  call, paced at 20 ms. Emoji are still unreliable in Notepad's type
+  mode; the default paste method handles them correctly.
+
 ## 2.22.0 — 2026-08-03
 
 ### Fixed

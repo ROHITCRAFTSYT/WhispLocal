@@ -28,6 +28,7 @@ TEXT_STATES = {
     "loading": ("Loading model…", ACCENT),
     "translate": ("Translating…", "#bd93f9"),
     "thinking": ("Working on it", "#50fa7b"),
+    "editing": ("Editing", "#f1fa8c"),
 }
 
 
@@ -213,12 +214,13 @@ class Overlay:
             return
 
         if st in ("recording", "locked", "recording_translate",
-                  "recording_command"):
+                  "recording_command", "recording_edit"):
             # Status dot: red = dictation, orange = locked,
-            # purple = translate, green = voice control.
+            # purple = translate, green = voice control, yellow = edit.
             color = {"recording": "#ff5555", "locked": "#ffb86c",
                      "recording_translate": "#bd93f9",
-                     "recording_command": "#50fa7b"}[st]
+                     "recording_command": "#50fa7b",
+                     "recording_edit": "#f1fa8c"}[st]
             pulse = 5 + (self._tick // 4) % 2
             c.create_oval(22 - pulse, h // 2 - pulse, 22 + pulse, h // 2 + pulse,
                           fill=color, outline=color)
@@ -242,7 +244,7 @@ class Overlay:
             self._tick += 1
             self._anim_job = self.root.after(45, self._draw)
 
-        elif st == "transcribing" or st == "translate":
+        elif st in ("transcribing", "translate", "editing"):
             text, color = TEXT_STATES[st]
             dots = "." * (1 + self._tick // 6 % 3)
             c.create_text(w // 2, h // 2, text=text + dots,

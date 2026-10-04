@@ -27,6 +27,24 @@ SCRIPT_PRIMERS = {
     "pa": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਇਹ ਗੁਰਮੁਖੀ ਲਿਪੀ ਵਿੱਚ ਲਿਖਿਆ ਵਾਕ ਹੈ।",
 }
 
+# "Roman script" output (indic_script = "roman"): a Latin-alphabet primer
+# steers Whisper toward the way people actually type these languages in
+# chat ("kal meeting kitne baje hai?"), English words included. Best
+# effort: the model can still switch scripts on some clips.
+ROMAN_PRIMERS = {
+    "hi": "Haan bhai, kal ki meeting kitne baje hai? Main thoda late "
+          "aaunga, please wait karna.",
+    "mr": "Ho, udya meeting kiti vajta aahe? Mi thoda late yein.",
+    "bn": "Haan, kalke meeting koyta baje? Ami ektu deri te asbo.",
+    "ta": "Aamaa, naalai meeting evvalavu manikku? Naan konjam late-aa "
+          "varuven.",
+    "te": "Avunu, repu meeting enni gantalaki? Nenu konchem late ga "
+          "vastanu.",
+    "gu": "Haa, kale meeting ketla vage che? Hu thodo late aavish.",
+    "pa": "Haan ji, kal meeting kinne vaje hai? Main thoda late aavanga.",
+    "ur": "Haan, kal meeting kitne baje hai? Main thora late aaunga.",
+}
+
 
 class Transcriber:
     """Lazily-loaded faster-whisper wrapper.
@@ -41,6 +59,7 @@ class Transcriber:
         self.language = config.get("language") or None  # None = auto-detect
         self.beam_size = int(config.get("beam_size", 2))
         self.cpu_threads = int(config.get("cpu_threads", 0)) or (os.cpu_count() or 4)
+        self.script = config.get("indic_script", "native")  # or "roman"
         self._model = None
         self._lock = threading.Lock()
 
@@ -70,7 +89,8 @@ class Transcriber:
         else:
             lang = language if language is not None else self.language
 
-        primer = SCRIPT_PRIMERS.get(lang) if task == "transcribe" else None
+        primers = ROMAN_PRIMERS if self.script == "roman" else SCRIPT_PRIMERS
+        primer = primers.get(lang) if task == "transcribe" else None
         # Always include the built-in proper-noun hints so names like
         # "Claude" are not heard as "cloud".
         effective_hotwords = (DEFAULT_HOTWORDS + " " + (hotwords or "")).strip()

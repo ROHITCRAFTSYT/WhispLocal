@@ -7,3 +7,4 @@ whisp.log
 config.json
 *.wav
 .freebuff/
+recovery/
