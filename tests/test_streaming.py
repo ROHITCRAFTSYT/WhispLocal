@@ -11,7 +11,10 @@ import threading
 import time
 import unittest
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    raise unittest.SkipTest("numpy not installed")
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "whisp"))
