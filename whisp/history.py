@@ -47,7 +47,7 @@ def search(entries, query="", app=None, task=None, limit=200):
     df = Counter(t for d in docs for t in set(d))
     k1, b = 1.5, 0.75
     scored = []
-    for idx, (entry, doc) in enumerate(zip(pool, docs)):
+    for idx, (entry, doc) in enumerate(zip(pool, docs, strict=True)):
         tf = Counter(doc)
         score = 0.0
         for t in terms:
@@ -90,7 +90,7 @@ def stats(entries, today=None, typing_wpm=TYPING_WPM):
     total_words = sum(words)
     audio_s = sum(float(e.get("audio_s", 0) or 0) for e in dictations)
     week_ago = today - _dt.timedelta(days=6)
-    words_7d = sum(w for e, w in zip(dictations, words)
+    words_7d = sum(w for e, w in zip(dictations, words, strict=True)
                    if (_day(e) or _dt.date.min) >= week_ago)
     wpm = total_words / (audio_s / 60) if audio_s > 0 else 0.0
     typed_min = total_words / typing_wpm if typing_wpm else 0.0

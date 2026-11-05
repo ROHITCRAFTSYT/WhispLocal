@@ -10,8 +10,18 @@ a change that did not happen.
 """
 import ctypes
 from ctypes import (
-    POINTER, Structure, WINFUNCTYPE, byref, c_float, c_long, c_ubyte,
-    c_ulong, c_ushort, c_void_p, cast, windll,
+    POINTER,
+    WINFUNCTYPE,
+    Structure,
+    byref,
+    c_float,
+    c_long,
+    c_ubyte,
+    c_ulong,
+    c_ushort,
+    c_void_p,
+    cast,
+    windll,
 )
 
 CLSCTX_ALL = 0x17

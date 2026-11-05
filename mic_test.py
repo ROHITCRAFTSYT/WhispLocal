@@ -13,13 +13,13 @@ All output is ASCII-safe so the Windows console (cp1252) never chokes.
 """
 import os
 import sys
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "whisp"))
 
 try:
     import numpy as np
     import sounddevice as sd
+
     from audio import SAMPLE_RATE, SILENCE_RMS, is_mic_device, rms
 except ImportError as e:
     print(f"Missing dependency: {e}")

@@ -14,7 +14,7 @@ import unittest
 try:
     import numpy as np
 except ImportError:
-    raise unittest.SkipTest("numpy not installed")
+    raise unittest.SkipTest("numpy not installed") from None
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "whisp"))

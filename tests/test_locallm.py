@@ -142,7 +142,10 @@ class LocalLLMTests(unittest.TestCase):
             t0 = time.perf_counter()
             a = threading.Thread(target=call)
             b = threading.Thread(target=call)
-            a.start(); b.start(); a.join(); b.join()
+            a.start()
+            b.start()
+            a.join()
+            b.join()
             elapsed = time.perf_counter() - t0
         self.assertEqual(results, ["open chrome", "open chrome"])
         self.assertGreater(elapsed, 0.25)   # serialized, not overlapped

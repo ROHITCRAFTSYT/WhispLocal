@@ -8,3 +8,11 @@ config.json
 *.wav
 .freebuff/
 recovery/
+whisp.log.*
+config.json.bad
+self-test.txt
+build/
+dist/
+build-venv/
+.pytest_cache/
+.ruff_cache/

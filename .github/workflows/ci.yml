@@ -4,13 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  lint:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -18,7 +24,65 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.11"
-      - name: Compile all modules
-        run: python -m py_compile whisp/adaptive.py whisp/app.py whisp/appcontext.py whisp/audio.py whisp/chords.py whisp/cleanup.py whisp/commands.py whisp/configio.py whisp/cues.py whisp/editing.py whisp/history.py whisp/inject.py whisp/locallm.py whisp/obsidian.py whisp/overlay.py whisp/planner.py whisp/recovery.py whisp/settings.py whisp/snippets.py whisp/styles.py whisp/transcriber.py whisp/tray.py warmup.py
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+      - name: Install ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.17.3
+      - name: Ruff
+        run: ruff check --output-format=github .
+      - name: Byte-compile every module
+        # Catches syntax errors in GUI modules the tests do not import.
+        run: python -m compileall -q whisp tests packaging warmup.py mic_test.py
+
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest
+
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Build with PyInstaller (includes the frozen self-test)
+        shell: cmd
+        run: packaging\build.bat
+      - name: Smoke test - the frozen app starts
+        shell: pwsh
+        run: |
+          $dir = "dist\WhispLocal"
+          $log = Join-Path $dir "whisp.log"
+          $p = Start-Process (Join-Path $dir "WhispLocal.exe") -PassThru
+          $deadline = (Get-Date).AddSeconds(90)
+          $started = $false
+          while ((Get-Date) -lt $deadline -and -not $p.HasExited) {
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern "WhispLocal .* started" -Quiet)) {
+              $started = $true
+              break
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (Test-Path $log) { Get-Content $log }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if (-not $started) {
+            Write-Error "WhispLocal.exe did not reach 'started' (exited: $($p.HasExited))"
+            exit 1
+          }

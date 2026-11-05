@@ -1,0 +1,2 @@
+# Build-only tooling, installed on top of requirements.txt by build.bat.
+pyinstaller==6.22.3

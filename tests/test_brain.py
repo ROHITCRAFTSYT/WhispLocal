@@ -196,7 +196,7 @@ class CompoundCommandTests(unittest.TestCase):
                        "open youtube search mr beast",
                        "mr beast in youtube"):
             opened = []
-            commands.webbrowser.open = lambda u: opened.append(u)
+            commands.webbrowser.open = lambda u, opened=opened: opened.append(u)
             ok, msg = self.e.run(phrase)
             self.assertTrue(ok, phrase)
             self.assertFalse(any("google.com/search" in u for u in opened),

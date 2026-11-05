@@ -27,8 +27,7 @@ except ImportError:
     HAVE_AUDIO = False
 
 if HAVE_AUDIO:
-    from audio import (Recorder, SAMPLE_RATE, SILENCE_RMS, is_mic_device,
-                       rms, resample, scan_mics)
+    from audio import SAMPLE_RATE, SILENCE_RMS, Recorder, is_mic_device, resample, rms, scan_mics
 
 
 @unittest.skipUnless(HAVE_AUDIO, "numpy/sounddevice not installed")
