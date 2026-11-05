@@ -19,7 +19,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "whisp"))
 
-from transcriber import Transcriber, SCRIPT_PRIMERS
+from transcriber import SCRIPT_PRIMERS, Transcriber
 
 try:
     import numpy as np

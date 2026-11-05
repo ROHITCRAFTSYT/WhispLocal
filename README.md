@@ -326,6 +326,19 @@ has a position option with seven placements if it gets in the way.
 
 ## Install
 
+### Requirements
+
+- Windows 10 or 11 (64-bit).
+- [Python 3.11 or 3.12](https://www.python.org/downloads/), with "Add
+  python.exe to PATH" ticked in the installer. (Only for the source
+  install below; the standalone build bundles its own Python.)
+- About 500 MB of disk for the dependencies, plus the speech model
+  (75 MB for `base`, up to ~500 MB for `small`).
+- An internet connection the first time a model is used. After that
+  everything runs offline.
+
+### From source (recommended)
+
 ```
 git clone https://github.com/ROHITCRAFTSYT/WhispLocal.git
 cd WhispLocal
@@ -333,15 +346,45 @@ setup.bat
 install_shortcuts.bat
 ```
 
-You need Windows 10 or 11 and [Python 3.11+](https://www.python.org/downloads/).
-`setup.bat` creates a virtual environment, installs dependencies, and
-downloads the default model (about 75 MB). `install_shortcuts.bat` adds
-WhispLocal to your Desktop and Start Menu. Launch it from the Start Menu
-and look for the microphone icon in the tray. Launching it twice is safe;
-the second copy just tells you it is already running.
+`setup.bat` creates a virtual environment (`venv\`), installs the pinned
+dependencies from `requirements.txt`, and downloads the default model.
+`install_shortcuts.bat` adds WhispLocal to your Desktop and Start Menu.
+Launch it from the Start Menu and look for the microphone icon in the
+tray. Launching it twice is safe; the second copy just tells you it is
+already running.
 
 To start it at login, press `Win+R`, type `shell:startup`, and copy the
 WhispLocal shortcut into that folder.
+
+To update, `git pull` and run `setup.bat` again. Your `config.json`,
+history and learning profile are kept.
+
+### Standalone build (no Python needed on the target PC)
+
+```
+packaging\build.bat
+```
+
+This makes a separate build environment and produces
+`dist\WhispLocal\WhispLocal.exe` with PyInstaller, then runs the built
+app's self-test (`WhispLocal.exe --self-test`, report in
+`self-test.txt`). Copy the whole `dist\WhispLocal` folder somewhere you
+can write to, such as `%LOCALAPPDATA%\WhispLocal` — not `Program Files`,
+because `config.json`, `whisp.log` and history are stored next to the
+exe. The model still downloads on first use. The optional local-LLM
+backends (llama.cpp, transformers) are not bundled; use the source
+install if you want them.
+
+### Configuration
+
+Settings (tray icon → Settings) writes `config.json` next to the app;
+`config.default.json` lists every key with its default. You can edit
+`config.json` by hand while the app is closed. Every value is checked on
+start: a value of the wrong type or outside its range (for example
+`"beam_size": "two"` or `"insert_mode": "pastee"`) is replaced by its
+default and a warning naming the key is written to `whisp.log`, so a
+typo never stops the app. A file that is not valid JSON is moved aside to
+`config.json.bad` and the defaults are used.
 
 ## Privacy
 
@@ -366,26 +409,87 @@ WhispLocal shortcut into that folder.
 ## Development
 
 ```
-venv\Scripts\python.exe -m unittest discover -s tests
+venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+venv\Scripts\python.exe -m pytest
+venv\Scripts\python.exe -m ruff check .
 ```
 
 The suite covers text cleanup, app styles, the insertion planner, voice
 edits, spoken shortcuts, history search and stats, chords, take recovery,
-the personalization engine, the command parser and app matching, and the
-Obsidian writer. `debug.bat` runs the
-app with a console attached; errors also go to `whisp.log`, which rotates
-itself. Pull requests welcome.
+the personalization engine, the command parser and app matching, the
+Obsidian writer, config validation, log rotation, model-load failures and
+microphone failures. It needs no microphone, model or network: audio
+devices and faster-whisper are mocked. CI (`.github/workflows/ci.yml`)
+runs ruff, the tests on Python 3.11 and 3.12, and a PyInstaller build
+with its self-test and a start-up smoke test, all on `windows-latest`.
+
+`debug.bat` runs the app with a console attached, so log lines also print
+there. Set `WHISP_LOG_LEVEL=DEBUG` for more detail. Pull requests welcome.
 
 ## Troubleshooting
 
-- Text does not appear in some apps: programs running as Administrator
-  ignore input from normal processes. Run WhispLocal as administrator too.
+Start with the log. `whisp.log` sits next to the app (the `WhispLocal`
+folder, or `dist\WhispLocal` for the standalone build). It rotates at
+1 MB and keeps three old copies (`whisp.log.1` … `whisp.log.3`), so it
+never fills the disk. Errors are logged with a full traceback, including
+ones from background threads. Attach the relevant part when you report a
+bug, after checking it for anything private.
+
+**It will not start**
+
+- Run `debug.bat` to see the error in a console, or read `whisp.log`.
+- "Python was not found" from `setup.bat`: install Python 3.11+ with
+  "Add python.exe to PATH", then run `setup.bat` again.
+- "The speech engine is not installed correctly": run `setup.bat` again.
+  If it persists, install the latest
+  [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist)
+  (x64), which CTranslate2 needs.
+- "WhispLocal is already running": look for the mic icon in the tray
+  (it may be hidden under the `^` arrow), or end `pythonw.exe` /
+  `WhispLocal.exe` in Task Manager.
+
+**The model will not load** (the bar shows the reason)
+
+- "not downloaded yet and the download failed": the first use of a
+  model needs internet. Connect once and restart, or run `warmup.py`
+  (`venv\Scripts\python.exe warmup.py`) to download it with progress.
+  Behind a proxy, set `HTTPS_PROXY` before starting. Models already
+  downloaded load without any network access.
+- "Not enough memory": choose `tiny` or `base` in Settings.
+- "looks damaged": delete the model folder under
+  `%USERPROFILE%\.cache\huggingface\hub` (names start with
+  `models--Systran--faster-whisper-`) and restart to download it again.
+- "Unknown speech model": `model` in `config.json` has a typo; pick one
+  from Settings.
+
+**The microphone does not work**
+
+- "Windows blocked microphone access": Settings → Privacy & security →
+  Microphone → turn on "Let desktop apps access your microphone".
+- "No voice detected": the mic delivers silence. Check it is not muted
+  and that the right device is selected in Settings → Microphone. Run
+  `venv\Scripts\python.exe mic_test.py --all` to measure every input.
+- "is busy": another app holds the mic in exclusive mode. Close it, or
+  untick "Allow applications to take exclusive control" in the device's
+  Windows sound properties.
+- Plugged in a headset after starting WhispLocal: just dictate. The
+  device list is refreshed automatically when a mic fails to open. If
+  your chosen mic is unplugged, WhispLocal records from the Windows
+  default instead and says so in `whisp.log`.
+
+**Text does not arrive**
+
+- Nothing appears in some apps: programs running as Administrator
+  ignore input from normal processes. Run WhispLocal as administrator
+  too.
 - An app blocks pasting: switch the insert method to `type` in Settings.
-- Wrong microphone: pick the right one in Settings.
+- The text landed in the wrong window: tray → "Paste last dictation".
+- Dictation failed: tray → "Retry last recording" re-runs the last take.
+
+**Voice control**
+
 - A command opens the web when the app is installed: give it a moment
   after startup to finish indexing your apps, then try again.
-- It will not start: run `debug.bat` and read the error, or check
-  `whisp.log`.
 
 ## License
 

@@ -1,0 +1,33 @@
+# Tool configuration only: WhispLocal is run from a venv (setup.bat) or as a
+# PyInstaller build (packaging/build.ps1), not installed as a package.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["venv", "build", "dist"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, bugbear, isort, pyupgrade.
+select = ["E", "F", "W", "B", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# These put whisp/ on sys.path before importing app modules.
+"whisp/app.py" = ["E402"]
+"tests/*" = ["E402"]
+"mic_test.py" = ["E402"]
+"warmup.py" = ["E402"]
+"packaging/*" = ["E402"]
+
+[tool.ruff.lint.isort]
+# Modules in whisp/ are imported flat (sys.path), so name them first-party.
+known-first-party = [
+    "adaptive", "app", "appcontext", "audio", "bridge", "chords", "cleanup",
+    "commands", "configcheck", "configio", "cues", "editing", "history",
+    "inject", "locallm", "logsetup", "obsidian", "overlay", "planner",
+    "recovery", "settings", "snippets", "streaming", "styles", "transcriber",
+    "tray", "volume",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

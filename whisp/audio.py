@@ -8,6 +8,13 @@ falls back to the device's native rate, resampling the captured audio to
 scan_mics() probes every input device with a short recording and returns
 the name of the first one that delivers real audio, so the app can pick
 a working microphone instead of trusting a possibly-dead system default.
+
+Opening a device can fail for many reasons on Windows (unplugged since
+startup, held in exclusive mode by another app, blocked by the privacy
+settings, no input device at all). Recorder.start() retries once after
+refreshing PortAudio's device list (hot-plugged headsets), then falls back
+from a configured-but-broken device to the system default, and finally
+raises MicrophoneError with a message a user can act on.
 """
 import threading
 import time
@@ -15,6 +22,10 @@ from collections import deque
 
 import numpy as np
 import sounddevice as sd
+
+from logsetup import get_logger
+
+_log = get_logger("audio")
 
 SAMPLE_RATE = 16000
 # Below this RMS (float32, roughly -66 dBFS) the mic is effectively
@@ -24,6 +35,84 @@ SILENCE_RMS = 0.0005
 # Outputs/loopbacks that can masquerade as inputs (max_input_channels > 0,
 # sometimes with garbage NaN/inf levels). The scanner must never pick them.
 NON_MIC_MARKERS = ("speaker", "output", "stereo mix", "loopback")
+
+
+class MicrophoneError(RuntimeError):
+    """The microphone could not be opened. ``str(err)`` is a short,
+    user-facing explanation and ``err.hint`` what to do about it; the
+    original exception is chained as ``__cause__``."""
+
+    def __init__(self, message, hint=""):
+        super().__init__(message)
+        self.hint = hint
+
+    def user_message(self):
+        return f"{self}. {self.hint}" if self.hint else str(self)
+
+
+# PortAudio error codes (portaudio.h, PaErrorCode).
+_PA_INVALID_CHANNELS = -9998
+_PA_INVALID_SAMPLE_RATE = -9997
+_PA_INVALID_DEVICE = -9996
+_PA_DEVICE_UNAVAILABLE = -9985
+_PA_HOST_ERROR = -9999
+
+
+def _pa_code(exc):
+    """PaErrorCode from a sounddevice.PortAudioError, else None."""
+    args = getattr(exc, "args", ())
+    if len(args) >= 2 and isinstance(args[1], int):
+        return args[1]
+    return None
+
+
+def explain_device_error(exc, device=None):
+    """Map a raw open failure to a MicrophoneError with an actionable hint."""
+    code = _pa_code(exc)
+    text = str(exc).lower()
+    which = f"'{device}'" if device else "the default microphone"
+    if "no default input" in text or "error querying device -1" in text or \
+            "no input device" in text:
+        return MicrophoneError(
+            "No microphone found",
+            "Plug one in, or enable it in Windows Sound settings > Input.")
+    if code == _PA_INVALID_DEVICE or "invalid device" in text:
+        return MicrophoneError(
+            f"Microphone {which} is not available any more",
+            "Reconnect it, or pick another one in Settings > Microphone.")
+    if code == _PA_DEVICE_UNAVAILABLE or "unavailable" in text or \
+            "busy" in text or "in use" in text:
+        return MicrophoneError(
+            f"Microphone {which} is busy",
+            "Close apps using it in exclusive mode, or pick another mic in "
+            "Settings > Microphone.")
+    if code == _PA_HOST_ERROR or "host error" in text or \
+            ("access" in text and "denied" in text):
+        return MicrophoneError(
+            "Windows blocked microphone access",
+            "Settings > Privacy & security > Microphone: turn on 'Let "
+            "desktop apps access your microphone'.")
+    if code in (_PA_INVALID_SAMPLE_RATE, _PA_INVALID_CHANNELS) or \
+            "sample rate" in text or "channels" in text:
+        return MicrophoneError(
+            f"Microphone {which} does not support mono recording at a usable "
+            "sample rate", "Pick another mic in Settings > Microphone.")
+    return MicrophoneError(f"Could not open microphone {which}",
+                           "Run mic_test.py or see whisp.log for details.")
+
+
+def refresh_devices():
+    """Re-scan audio hardware. PortAudio snapshots the device list when it
+    initialises, so a headset plugged in after launch is invisible (and
+    indices shift) until it is re-initialised. Only call this while no
+    stream is open. Returns True on success."""
+    try:
+        sd._terminate()
+        sd._initialize()
+        return True
+    except Exception as e:  # private API: never let it break recording
+        _log.warning("could not refresh the audio device list: %s", e)
+        return False
 
 
 def is_mic_device(name):
@@ -65,7 +154,8 @@ def scan_mics(seconds=1.5):
 def _probe_device(name, seconds):
     """Record `seconds` of audio from a device and return its RMS level,
     or 0.0 when it delivered nothing."""
-    rec = Recorder(name)
+    # No fallback: a probe must measure *this* device, not the default.
+    rec = Recorder(name, fallback_to_default=False)
     rec.start()
     try:
         time.sleep(seconds)
@@ -114,11 +204,17 @@ def resample(audio, src_rate, dst_rate):
 
 
 class Recorder:
-    def __init__(self, device=None):
+    def __init__(self, device=None, fallback_to_default=True):
         # Keep the raw configured name for diffing in reload_config;
-        # resolve it to a concrete device index at open time.
+        # it is re-resolved to a concrete device index at every open, so
+        # an unplug/replug (which renumbers devices) cannot point a take
+        # at the wrong mic.
         self.device = device
+        self.fallback_to_default = fallback_to_default
         self._device_index = resolve_input_device(device)
+        # True while the current/last take runs on the system default
+        # because the configured device could not be opened.
+        self.using_fallback = False
         self._frames = []
         self._stream = None
         self._sample_rate = SAMPLE_RATE
@@ -139,8 +235,54 @@ class Recorder:
             self._open_stream()
 
     def _open_stream(self):
-        """Open the mic at 16 kHz, falling back to the device's native
-        rate when the driver refuses 16 kHz (common on Windows)."""
+        """Open the configured mic; on failure refresh the device list and
+        retry it once, then fall back to the system default (when allowed).
+        Raises MicrophoneError when nothing can be opened."""
+        self._device_index = resolve_input_device(self.device)
+        # A configured name that matches no device records from the default.
+        self.using_fallback = bool(self.device) and self._device_index is None
+        if self.using_fallback and not self.fallback_to_default:
+            raise MicrophoneError(
+                f"Microphone '{self.device}' is not available any more",
+                "Reconnect it, or pick another one in Settings > Microphone.")
+        if self.using_fallback:
+            _log.warning("microphone '%s' not found; using the system default",
+                         self.device)
+        try:
+            self._open_at_best_rate()
+            return
+        except Exception as first:
+            err = first
+        if not self.fallback_to_default:
+            raise explain_device_error(err, self.device) from err
+        _log.warning("could not open %s (%s); refreshing the device list",
+                     self.device or "default mic", err)
+        if refresh_devices():
+            self._device_index = resolve_input_device(self.device)
+            self.using_fallback = (bool(self.device)
+                                   and self._device_index is None)
+            try:
+                self._open_at_best_rate()
+                _log.info("opened %s after refreshing the device list",
+                          self.device or "default mic")
+                return
+            except Exception as e:
+                err = e
+        if self.device and self._device_index is not None:
+            try:
+                self._device_index = None
+                self._open_at_best_rate()
+                self.using_fallback = True
+                _log.warning("microphone '%s' failed (%s); recording from the "
+                             "system default instead", self.device, err)
+                return
+            except Exception as e:
+                _log.error("default microphone failed too: %s", e)
+        raise explain_device_error(err, self.device) from err
+
+    def _open_at_best_rate(self):
+        """Open the current device at 16 kHz, falling back to the device's
+        native rate when the driver refuses 16 kHz (common on Windows)."""
         stream = None
         rate = SAMPLE_RATE
         try:

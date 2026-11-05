@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Config validation. Every key in `config.json` is checked on load; a
+  wrong type or unknown choice falls back to its default, numbers are
+  clamped to their range, bad list/dict entries are dropped, and each
+  problem is logged by key. JSON that is not an object is quarantined to
+  `config.json.bad` like invalid JSON already was.
+- Rotating log: `whisp.log` now rotates at 1 MB with three backups
+  (previously truncated to its last 200 lines), records the level and
+  thread of each line, and captures uncaught exceptions from background
+  threads. `WHISP_LOG_LEVEL=DEBUG` turns on verbose logging.
+- Standalone build: `packaging\build.bat` produces
+  `dist\WhispLocal\WhispLocal.exe` with PyInstaller and runs its
+  `--self-test`.
+- CI runs ruff, pytest on Python 3.11 and 3.12 (now with numpy and
+  sounddevice installed, so the audio tests run instead of skipping), and
+  the PyInstaller build plus a start-up smoke test, all on
+  `windows-latest`.
+
+### Changed
+- The speech model loads offline first: a cached model is opened without
+  contacting Hugging Face; the network is used only when the model is
+  not downloaded yet.
+- Model-load failures show the reason on the bar (not downloaded and no
+  internet, out of memory, out of disk, damaged download, unknown model,
+  broken install) instead of a generic error.
+- Microphone failures show the reason (no microphone, unplugged, busy,
+  blocked by Windows privacy, unsupported format). Before giving up,
+  WhispLocal refreshes the device list once (for a headset plugged in
+  after launch) and then falls back from a broken chosen mic to the
+  Windows default.
+
+### Fixed
+- The chosen microphone is looked up again at every recording, so an
+  unplug and replug (which renumbers devices) can no longer record from
+  the wrong device.
+- `"language": "auto"` in a hand-edited config no longer reaches Whisper
+  as a language code.
+- A null or non-numeric `beam_size` / `cpu_threads` no longer crashes
+  model setup.
+
 ## 3.0.0 — 2026-10-04
 
 ### Added

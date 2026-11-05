@@ -1534,7 +1534,7 @@ class CommandEngine:
 
         if kind == "lookup":
             webbrowser.open("https://www.google.com/search?q=" + _quote(arg))
-            return True, f"Looking that up"
+            return True, "Looking that up"
 
         if kind == "url":
             # "youtube dot com" -> youtube.com; but NEVER strip spaces to
