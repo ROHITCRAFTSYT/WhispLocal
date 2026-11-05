@@ -23,12 +23,13 @@ import chords
 import configio
 import cues
 import editing
+import logsetup
 import obsidian
 import planner
 import snippets
 import styles
 from adaptive import Adaptive
-from audio import Recorder, SILENCE_RMS, rms, scan_mics
+from audio import SILENCE_RMS, Recorder, rms, scan_mics
 from bridge import Bridge, PageProxy
 from cleanup import clean
 from commands import CommandEngine, heard_part, parse, speak
@@ -73,20 +74,13 @@ class _LockedEngine:
 
 
 def log(msg):
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+    """Write to whisp.log (rotating; see logsetup.py)."""
+    logsetup.log_message(msg)
 
 
 def rotate_log():
-    """Keep whisp.log from growing without bound."""
-    try:
-        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > MAX_LOG_BYTES:
-            with open(LOG_PATH, encoding="utf-8", errors="replace") as f:
-                tail = f.readlines()[-200:]
-            with open(LOG_PATH, "w", encoding="utf-8") as f:
-                f.writelines(tail)
-    except OSError:
-        pass
+    """Set up rotating file logging (whisp.log + 3 backups of 1 MB)."""
+    logsetup.setup_logging(APP_DIR)
 
 
 def acquire_single_instance():
@@ -495,7 +489,9 @@ class App:
         except Exception as e:
             self.state = IDLE
             log(f"mic error: {e}\n{traceback.format_exc()}")
+            hint = getattr(e, "user_message", None)
             self.overlay.post(("message",
+                               hint() if hint else
                                "Microphone error — check Settings → "
                                "Microphone and Windows privacy", False))
 
@@ -834,7 +830,8 @@ class App:
             log(f"model '{self.transcriber.model_name}' loaded")
         except Exception as e:
             log(f"model load failed: {e}\n{traceback.format_exc()}")
-            self.overlay.post("error")
+            hint = getattr(e, "user_message", None)
+            self.overlay.post(("message", hint(), False) if hint else "error")
         finally:
             self._model_ready.set()
 
@@ -893,6 +890,7 @@ class App:
 
 
 if __name__ == "__main__":
+    logsetup.setup_logging(APP_DIR)
     guard = acquire_single_instance()
     if guard is None:
         import tkinter as tk
