@@ -3,5 +3,5 @@
 # pins match requirements.txt.
 pytest==9.2.0
 ruff==0.17.3
-numpy==2.4.6
-sounddevice==0.5.5
+numpy==2.5.4
+sounddevice==0.5.6
